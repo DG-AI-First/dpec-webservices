@@ -1,0 +1,25 @@
+{
+  "name": "dpec-sap-soap-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Standalone probe that calls DPEC's two SAP SOAP services and produces disk evidence + a machine-checkable exit code.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "node --import tsx --test \"test/**/*.test.ts\"",
+    "dry": "node --import tsx --env-file-if-exists=.env scripts/dry-run.mjs",
+    "probe": "node --import tsx --env-file-if-exists=.env src/index.ts"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^4.5.0",
+    "undici": "^7.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,12 @@
+# Credentials — MUST stay out of git. Created before anything else.
+.env
+.env.local
+*.pem
+*.key
+
+# Evidence captures may contain customer data
+evidence/
+!evidence/.gitkeep
+
+node_modules/
+dist/
