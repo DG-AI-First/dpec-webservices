@@ -262,6 +262,28 @@
       no están configurados. Producción sí tendría los servicios activos —las capturas de SoapUI
       de la documentación oficial fueron hechas contra <code>sapprd</code>—, pero ahí no tenemos acceso.
     </p>
+    <p>
+      Conviene distinguir dos capas que en SAP son independientes: <strong>SICF</strong> activa el
+      nodo HTTP y <strong>SOAMANAGER</strong> configura el binding del servicio. En QA la primera
+      está hecha y la segunda no: el servicio está <em>expuesto</em> pero no <em>configurado</em>.
+    </p>
+  </section>
+
+  <section>
+    <h2>Verificación independiente, sin nuestro código de por medio</h2>
+    <p>
+      Para descartar que la falla estuviera en el cliente que desarrollamos, se repitieron las
+      pruebas desde un navegador común, con las mismas credenciales y sin ningún software nuestro
+      involucrado:
+    </p>
+    <ul class="checks">
+      <li><span class="mark y">QA</span><span>La URL completa devuelve <strong>HTTP 415</strong> (<em>Unsupported Media Type</em>). El endpoint existe, las credenciales son aceptadas, y rechaza el pedido porque un navegador envía un GET vacío mientras el servicio espera un POST con <code>text/xml</code>. Un servicio inexistente habría devuelto 404.</span></li>
+      <li><span class="mark n">PROD</span><span>El diálogo de usuario y contraseña reaparece indefinidamente. Esa es la manifestación visual del HTTP 401: el servidor sigue rechazando la credencial.</span></li>
+    </ul>
+    <p>
+      Ambos resultados coinciden exactamente con lo que había reportado nuestro script, por dos
+      caminos técnicamente independientes.
+    </p>
   </section>
 
   <section>
@@ -273,6 +295,8 @@
       <li><span class="mark y">OK</span><span>La autenticación en QA funciona: SAP devuelve el usuario técnico <code>WSMICTS</code> dentro de su propia respuesta de error.</span></li>
       <li><span class="mark y">OK</span><span>El mensaje SOAP que enviamos es válido. SAP responde <code>faultcode: soap-env:Server</code>, y en el estándar SOAP <code>Server</code> significa que la falla es del proveedor; si nuestro mensaje estuviera mal, respondería <code>Client</code>.</span></li>
       <li><span class="mark y">OK</span><span>No depende de los parámetros enviados: el segundo servicio falla en 187 ms, sin llegar a procesarlos.</span></li>
+      <li><span class="mark y">OK</span><span>No es el encabezado <code>SOAPAction</code>. Se probaron seis variantes —omitirlo por completo, vacío entre comillas, vacío sin comillas, el nombre de la operación, el URN completo y el URN con sufijo <code>Request</code>— y las seis devolvieron exactamente el mismo error.</span></li>
+      <li><span class="mark y">OK</span><span>No es la codificación de la contraseña: es ASCII puro, con lo cual UTF-8 e ISO-8859-1 producen bytes idénticos y el encabezado enviado es el mismo que armaría cualquier cliente.</span></li>
       <li><span class="mark n">FALLA</span><span>Los servicios no tienen configuración de binding activa en el ambiente QA.</span></li>
     </ul>
   </section>
@@ -311,6 +335,16 @@
         </p>
       </div>
       <div class="opt">
+        <div class="rank">También necesario</div>
+        <h3>Un juego de datos de prueba en QA</h3>
+        <p>
+          Qué número de instalación o interlocutor comercial tiene facturas cargadas en el
+          ambiente de pruebas. Sin ese dato, aun con el binding configurado, la respuesta
+          correcta de una cuenta vacía es indistinguible de una falla: en ambos casos llegan
+          cero registros.
+        </p>
+      </div>
+      <div class="opt">
         <div class="rank">Alternativa</div>
         <h3>Credenciales de Producción</h3>
         <p>
@@ -342,9 +376,26 @@
       Cada corrida queda registrada como evidencia reproducible.
     </p>
     <p>
-      Se realizaron cinco llamadas: dos a cada servicio en QA —mensaje SOAP y solicitud de WSDL—
-      y <strong>una sola</strong> a Producción, de solo lectura y sin reintentos, para confirmar el
-      estado de las credenciales. No se ejecutaron pruebas repetidas contra el sistema productivo.
+      Las pruebas contra QA se repitieron con distintas variantes hasta agotar las hipótesis
+      atribuibles a nuestro cliente. Contra Producción se realizó <strong>una sola llamada</strong>,
+      de solo lectura y sin reintentos, para confirmar el estado de las credenciales: reintentar
+      combinaciones de autenticación contra un sistema productivo resulta indistinguible de un
+      ataque en los registros del proveedor.
+    </p>
+  </section>
+
+  <section>
+    <h2>Estado del desarrollo</h2>
+    <p>
+      El trabajo de integración no quedó detenido a la espera de la respuesta. El cliente está
+      construido y probado en su totalidad: consume ambos servicios, resuelve la autenticación,
+      registra la evidencia y clasifica los resultados distinguiendo un error del proveedor de
+      una falla de red o de un rechazo de credenciales.
+    </p>
+    <p>
+      Lo único pendiente de nuestro lado es la ejecución contra un servicio que responda. En
+      cuanto DPEC habilite la configuración, la verificación completa toma minutos y no requiere
+      desarrollo adicional.
     </p>
   </section>
 
