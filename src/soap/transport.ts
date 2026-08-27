@@ -4,7 +4,7 @@
 // probe. Must stay domain-free: no tFact, no poDocumentos, nothing that
 // belongs to services/ — see design §1 layer map.
 
-import { Agent } from 'undici';
+import { Agent, getGlobalDispatcher } from 'undici';
 import { readFileSync } from 'node:fs';
 import type { TlsMode, BasicAuthCharset } from '../config.js';
 import { toTransportError } from '../errors.js';
@@ -32,14 +32,47 @@ export interface SoapCallResult {
  * NODE_TLS_REJECT_UNAUTHORIZED=0, which would be process-global and disable
  * verification for every connection the process makes.
  */
+/**
+ * Every Agent we hand to fetch, so closeTransport() can release them. Without
+ * this an Agent per call would leak, and its half-closed sockets are what make
+ * a subsequent process.exit() abort the process on Windows.
+ */
+const openAgents = new Set<Agent>();
+
 function buildDispatcher(tls: TlsMode): Agent | undefined {
   if (tls.mode === 'custom-ca') {
-    return new Agent({ connect: { ca: readFileSync(tls.caFile) } });
+    const agent = new Agent({ connect: { ca: readFileSync(tls.caFile) } });
+    openAgents.add(agent);
+    return agent;
   }
   if (tls.mode === 'insecure') {
-    return new Agent({ connect: { rejectUnauthorized: false } });
+    const agent = new Agent({ connect: { rejectUnauthorized: false } });
+    openAgents.add(agent);
+    return agent;
   }
   return undefined;
+}
+
+/**
+ * Releases every socket the probe opened, so the process can end on its own
+ * instead of being torn down mid-flight.
+ *
+ * This is not tidiness — it is the exit-code contract. Observed on win32:
+ * process.exit() with undici sockets still closing aborts with
+ * `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` and returns 127,
+ * erasing the 0/2/3/4 answer this tool exists to produce. Callers must await
+ * this and then set process.exitCode, never call process.exit().
+ *
+ * Errors are swallowed deliberately: a dispatcher that fails to close is not a
+ * reason to change the verdict we are about to report.
+ */
+export async function closeTransport(): Promise<void> {
+  const agents = [...openAgents];
+  openAgents.clear();
+  await Promise.all([
+    ...agents.map((agent) => agent.close().catch(() => {})),
+    getGlobalDispatcher().close().catch(() => {}),
+  ]);
 }
 
 /**

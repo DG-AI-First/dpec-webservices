@@ -21,7 +21,7 @@ import {
 } from './errors.js';
 import { buildEnvelope } from './soap/envelope.js';
 import { parseXml, findFault, unwrapBody } from './soap/parser.js';
-import { callSoap } from './soap/transport.js';
+import { callSoap, closeTransport } from './soap/transport.js';
 import type { SoapOperation, WireField } from './soap/types.js';
 import { zWsSap002 } from './services/zWsSap002.js';
 import { zFicaDeudaIcUnif } from './services/zFicaDeudaIcUnif.js';
@@ -246,7 +246,8 @@ async function main(): Promise<void> {
   } catch (err) {
     if (err instanceof ConfigError) {
       console.error(`CONFIG ERROR: ${err.message}`);
-      process.exit(err.exitCode);
+      process.exitCode = err.exitCode;
+      return;
     }
     throw err;
   }
@@ -300,11 +301,18 @@ async function main(): Promise<void> {
   }
 
   printFinalVerdict(summary);
-  process.exit(exitCode);
+
+  // Release sockets and let Node end on its own. process.exit() here aborts on
+  // Windows while undici is still closing connections, and the process returns
+  // 127 instead of this code — which would erase the entire answer. See
+  // closeTransport() and test/exit-contract.test.ts.
+  await closeTransport();
+  process.exitCode = exitCode;
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   console.error('UNEXPECTED FAILURE (this should never happen — please report it):');
   console.error(err);
-  process.exit(4);
+  await closeTransport().catch(() => {});
+  process.exitCode = 4;
 });
