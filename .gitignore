@@ -5,7 +5,7 @@
 *.key
 
 # Evidence captures may contain customer data
-evidence/
+evidence/*
 !evidence/.gitkeep
 
 node_modules/
