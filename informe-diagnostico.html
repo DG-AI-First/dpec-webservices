@@ -1,0 +1,356 @@
+<title>Diagnóstico SAP DPEC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap">
+
+<style>
+  :root {
+    --ground:        #F4F6F6;
+    --surface:       #FFFFFF;
+    --surface-sunk:  #EAEEEE;
+    --ink:           #14201F;
+    --ink-soft:      #4A5C5A;
+    --ink-faint:     #7B8B89;
+    --rule:          #D2DAD9;
+    --rule-strong:   #B4C0BE;
+    --accent:        #1F4E5F;
+    --pass:          #2C7A52;
+    --pass-soft:     #E2F0E8;
+    --block:         #B23A2B;
+    --block-soft:    #F7E5E2;
+    --wait:          #99701A;
+    --wait-soft:     #F6EEDA;
+    --shadow:        0 1px 2px rgba(20,32,31,.06), 0 8px 24px -12px rgba(20,32,31,.18);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:        #0E1615;
+      --surface:       #16211F;
+      --surface-sunk:  #1D2A28;
+      --ink:           #E6EDEB;
+      --ink-soft:      #A3B3B0;
+      --ink-faint:     #748583;
+      --rule:          #2A3937;
+      --rule-strong:   #3B4C4A;
+      --accent:        #7FB8CC;
+      --pass:          #6FCB97;
+      --pass-soft:     #14291F;
+      --block:         #F09384;
+      --block-soft:    #2E1815;
+      --wait:          #E2BC65;
+      --wait-soft:     #2A2214;
+      --shadow:        0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:        #0E1615;
+    --surface:       #16211F;
+    --surface-sunk:  #1D2A28;
+    --ink:           #E6EDEB;
+    --ink-soft:      #A3B3B0;
+    --ink-faint:     #748583;
+    --rule:          #2A3937;
+    --rule-strong:   #3B4C4A;
+    --accent:        #7FB8CC;
+    --pass:          #6FCB97;
+    --pass-soft:     #14291F;
+    --block:         #F09384;
+    --block-soft:    #2E1815;
+    --wait:          #E2BC65;
+    --wait-soft:     #2A2214;
+    --shadow:        0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 50rem;
+    margin: 0 auto;
+    padding: 3.5rem 1.5rem 6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3rem;
+  }
+
+  h1, h2, h3 { font-family: "IBM Plex Serif", ui-serif, Georgia, serif; text-wrap: balance; }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .75rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  header { display: flex; flex-direction: column; gap: .75rem; }
+  header h1 { font-size: 2.35rem; font-weight: 600; line-height: 1.15; letter-spacing: -.015em; }
+  header .sub { color: var(--ink-soft); font-size: 1.0625rem; max-width: 42rem; }
+
+  .verdict {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--block);
+    border-radius: 3px;
+    padding: 1.5rem 1.75rem;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: .625rem;
+  }
+  .verdict .label {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .7rem; letter-spacing: .12em; text-transform: uppercase; color: var(--block);
+  }
+  .verdict .lead { font-size: 1.2rem; line-height: 1.5; font-family: "IBM Plex Serif", ui-serif, Georgia, serif; }
+  .verdict .note { font-size: .9375rem; color: var(--ink-soft); }
+
+  section { display: flex; flex-direction: column; gap: 1rem; }
+  section h2 {
+    font-size: 1.3rem; font-weight: 600; letter-spacing: -.01em;
+    padding-bottom: .5rem; border-bottom: 1px solid var(--rule);
+  }
+  section p { max-width: 42rem; }
+
+  .scroll { overflow-x: auto; }
+
+  table { border-collapse: collapse; width: 100%; font-size: .9375rem; min-width: 34rem; }
+  th, td { text-align: left; padding: .7rem .85rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  thead th {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .7rem; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--ink-faint); font-weight: 500; border-bottom: 1px solid var(--rule-strong);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.env { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .875rem; white-space: nowrap; }
+  .dim { color: var(--ink-faint); font-size: .85em; }
+
+  .pill {
+    display: inline-block; padding: .1rem .5rem; border-radius: 2px;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .7rem; letter-spacing: .04em; font-weight: 500; white-space: nowrap;
+  }
+  .pill.ok    { background: var(--pass-soft);  color: var(--pass); }
+  .pill.no    { background: var(--block-soft); color: var(--block); }
+  .pill.maybe { background: var(--wait-soft);  color: var(--wait); }
+
+  ul.checks { list-style: none; display: flex; flex-direction: column; gap: .5rem; max-width: 42rem; }
+  ul.checks li { display: grid; grid-template-columns: 1.75rem 1fr; gap: .625rem; align-items: baseline; }
+  ul.checks .mark { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .75rem; letter-spacing: .04em; }
+  ul.checks .mark.y { color: var(--pass); }
+  ul.checks .mark.n { color: var(--block); }
+
+  code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .85em;
+    background: var(--surface-sunk);
+    padding: .1rem .3rem;
+    border-radius: 2px;
+  }
+
+  pre {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    background: var(--surface-sunk);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    font-size: .8125rem;
+    line-height: 1.6;
+  }
+  pre .hl { color: var(--block); font-weight: 600; }
+
+  .ask {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+  }
+  .ask .opt { padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: .4rem; }
+  .ask .opt + .opt { border-top: 1px solid var(--rule); }
+  .ask .rank {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .7rem;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--accent);
+  }
+  .ask h3 { font-size: 1.0625rem; font-weight: 600; }
+  .ask p { font-size: .9375rem; color: var(--ink-soft); }
+
+  dl.ids { display: grid; grid-template-columns: auto 1fr; gap: .4rem 1.25rem; font-size: .875rem; align-items: baseline; }
+  dl.ids dt { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .8125rem; color: var(--ink-soft); white-space: nowrap; }
+  dl.ids dd { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .8125rem; word-break: break-all; }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 1.25rem;
+    font-size: .875rem;
+    color: var(--ink-faint);
+    display: flex; flex-direction: column; gap: .4rem;
+  }
+
+  @media (max-width: 34rem) {
+    header h1 { font-size: 1.85rem; }
+    .wrap { padding-top: 2.5rem; gap: 2.25rem; }
+    dl.ids { grid-template-columns: 1fr; gap: .1rem; }
+    dl.ids dd { margin-bottom: .5rem; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">Informe de diagnóstico &middot; 26 de agosto de 2026</div>
+    <h1>Web Services SAP de DPEC</h1>
+    <p class="sub">
+      Resultado de las pruebas de conexión contra <code>Z_WS_SAP_002</code> (facturas)
+      y <code>Z_FICA_DEUDA_IC_UNIF</code> (estado de deuda), en los dos ambientes documentados.
+    </p>
+  </header>
+
+  <div class="verdict">
+    <div class="label">Veredicto</div>
+    <p class="lead">Ninguno de los dos servicios es accesible hoy. El bloqueo está del lado de DPEC.</p>
+    <p class="note">
+      No es un problema de nuestra integración: llegamos a SAP en los dos ambientes y en ninguno
+      pudimos obtener una respuesta. En QA nos autentica, pero los servicios no están publicados.
+      En Producción los servicios existen, pero las credenciales que tenemos no son válidas.
+    </p>
+  </div>
+
+  <section>
+    <h2>Qué pasa en cada ambiente</h2>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Ambiente</th>
+            <th>Conexión</th>
+            <th>Credenciales</th>
+            <th>Servicio operativo</th>
+            <th>Respuesta</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="env">sapqas<br><span class="dim">QA</span></td>
+            <td><span class="pill ok">OK</span></td>
+            <td><span class="pill ok">VÁLIDAS</span></td>
+            <td><span class="pill no">NO</span></td>
+            <td>HTTP 500<br><span class="dim">SOAP Fault</span></td>
+          </tr>
+          <tr>
+            <td class="env">sapprd<br><span class="dim">Producción</span></td>
+            <td><span class="pill ok">OK</span></td>
+            <td><span class="pill no">RECHAZADAS</span></td>
+            <td><span class="pill maybe">PROBABLE</span></td>
+            <td>HTTP 401<br><span class="dim">Unauthorized</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Las credenciales entregadas son de QA, y QA es justamente el ambiente donde los servicios
+      no están configurados. Producción sí tendría los servicios activos —las capturas de SoapUI
+      de la documentación oficial fueron hechas contra <code>sapprd</code>—, pero ahí no tenemos acceso.
+    </p>
+  </section>
+
+  <section>
+    <h2>Qué se descartó</h2>
+    <p>Antes de atribuir la falla, se verificó punto por punto que el problema no fuera nuestro:</p>
+    <ul class="checks">
+      <li><span class="mark y">OK</span><span>La red y el DNS resuelven los dos hosts.</span></li>
+      <li><span class="mark y">OK</span><span>El certificado TLS valida sin necesidad de una CA interna. La documentación indica <code>http://</code>, pero <code>https://</code> funciona correctamente.</span></li>
+      <li><span class="mark y">OK</span><span>La autenticación en QA funciona: SAP devuelve el usuario técnico <code>WSMICTS</code> dentro de su propia respuesta de error.</span></li>
+      <li><span class="mark y">OK</span><span>El mensaje SOAP que enviamos es válido. SAP responde <code>faultcode: soap-env:Server</code>, y en el estándar SOAP <code>Server</code> significa que la falla es del proveedor; si nuestro mensaje estuviera mal, respondería <code>Client</code>.</span></li>
+      <li><span class="mark y">OK</span><span>No depende de los parámetros enviados: el segundo servicio falla en 187 ms, sin llegar a procesarlos.</span></li>
+      <li><span class="mark n">FALLA</span><span>Los servicios no tienen configuración de binding activa en el ambiente QA.</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>La causa exacta en QA</h2>
+    <p>
+      Al solicitar el WSDL de cada servicio, SAP devuelve un error interno que identifica el problema
+      con precisión:
+    </p>
+    <pre>&lt;error&gt;
+  &lt;user&gt;WSMICTS&lt;/user&gt;
+  &lt;date&gt;20260826&lt;/date&gt;
+  &lt;time&gt;223948&lt;/time&gt;
+  &lt;errorText&gt;<span class="hl">WSP Exception caught: Initial value "config key" in method INITIALIZE of</span>&lt;/errorText&gt;
+  &lt;bindingKey&gt;965CD95BF9BFFA65E10000000A010216&lt;/bindingKey&gt;
+&lt;/error&gt;</pre>
+    <p>
+      <strong>WSP</strong> es el <em>Web Service Provider</em> de SAP. El mensaje indica que el binding
+      del servicio existe, pero no tiene una configuración asociada. Para exponer un RFC como web service
+      hacen falta dos cosas: la definición del servicio y una configuración de binding activa en
+      SOAMANAGER. La segunda no está hecha en QA, para ninguno de los dos servicios.
+    </p>
+  </section>
+
+  <section>
+    <h2>Qué necesitamos de DPEC</h2>
+    <div class="ask">
+      <div class="opt">
+        <div class="rank">Opción preferida</div>
+        <h3>Publicar los dos servicios en QA</h3>
+        <p>
+          Crear y activar la configuración de binding en SOAMANAGER para ambos servicios en
+          <code>sapqas</code>. Es la mejor opción porque deja un ambiente de pruebas utilizable
+          para todo el desarrollo posterior, sin tocar producción en ningún momento.
+        </p>
+      </div>
+      <div class="opt">
+        <div class="rank">Alternativa</div>
+        <h3>Credenciales de Producción</h3>
+        <p>
+          Habilitar un usuario con acceso a los dos servicios en <code>sapprd</code>. Funciona,
+          pero obliga a desarrollar y probar contra el sistema productivo, lo cual no es deseable.
+        </p>
+      </div>
+    </div>
+    <p>Para que el equipo Basis de DPEC ubique los errores en su log (transacción SRTUTIL):</p>
+    <dl class="ids">
+      <dt>Z_WS_SAP_002</dt>
+      <dd>bindingKey 965CD95BF9BFFA65E10000000A010216</dd>
+      <dt>Z_FICA_DEUDA_IC_UNIF</dt>
+      <dd>bindingKey 3CB96C5571986D30E10000000A010228</dd>
+      <dt>Transacción</dt>
+      <dd>386BDE44326A0040E006A6F8652D99A4</dd>
+      <dt>Transacción</dt>
+      <dd>386BDE44326A0090E006A4F8DDE46BDE</dd>
+      <dt>Fecha y hora</dt>
+      <dd>26/08/2026 &middot; 22:39 (hora del sistema SAP)</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>Cómo se probó</h2>
+    <p>
+      Se desarrolló un script en Node.js que construye el mensaje SOAP siguiendo la documentación
+      técnica de DPEC y guarda en disco los bytes exactos enviados y recibidos en cada llamada.
+      Cada corrida queda registrada como evidencia reproducible.
+    </p>
+    <p>
+      Se realizaron cinco llamadas: dos a cada servicio en QA —mensaje SOAP y solicitud de WSDL—
+      y <strong>una sola</strong> a Producción, de solo lectura y sin reintentos, para confirmar el
+      estado de las credenciales. No se ejecutaron pruebas repetidas contra el sistema productivo.
+    </p>
+  </section>
+
+  <footer>
+    <div>Informe generado el 26 de agosto de 2026 &middot; Evidencia completa disponible en el repositorio del proyecto.</div>
+    <div>Servicios evaluados: Z_WS_SAP_002 &middot; Z_FICA_DEUDA_IC_UNIF</div>
+  </footer>
+
+</div>
