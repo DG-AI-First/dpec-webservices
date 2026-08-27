@@ -93,7 +93,14 @@ export function parseXml(raw: string): XmlNode {
   return result as XmlNode;
 }
 
-function extractText(value: unknown): string {
+/**
+ * Coerces a parsed field value to a plain string. Exported for reuse by
+ * services/*.ts parseResult mappers (Phase 4) — a field with attributes
+ * (rare, but the same shape as a Fault's `faultstring xml:lang="es"`) parses
+ * to `{ '#text': ..., '@_...': ... }` instead of a bare string, and every
+ * service field must come out as a plain string per design §10.
+ */
+export function extractText(value: unknown): string {
   if (typeof value === 'string') return value;
   if (value !== null && typeof value === 'object' && '#text' in (value as Record<string, unknown>)) {
     return String((value as Record<string, unknown>)['#text']);
