@@ -1,17 +1,8 @@
-// ZZCS_INFO_IC_WS — resolves a DNI/CUIT to a business partner + installation.
-// See design §1: this module knows nothing about fetch/TLS/files/console;
-// buildFields/parseResult/summarize are pure functions of data in, data out
-// — 100% unit-testable with zero mocking (test/zzcsInfoIcWs.test.ts).
-//
-// Every wire name below comes from the real QA WSDL fetched today,
-// test/fixtures/zzcsInfoIcWs.wsdl.xml — not reconstructed from any doc or
-// PDF. Unlike the two mc-style services, this WSDL emits ABAP RFC parameter
-// names verbatim, UPPER_SNAKE, not PascalCase (see soap/envelope.ts's
-// widened assertWireName):
-//   ZZCS_INFO_IC_WS         :: IN_NUMERO, IN_PARTNER, IN_TEST, IN_TIPO
-//   ZZCS_INFO_IC_WSResponse :: OU_INFO_IC_WS, OU_RESULTADO
-//   ZZTTCS_INFO_IC_WS       :: item (table of ZZTCS_INFO_IC_WS, always item-wrapped)
-//   ZZTCS_INFO_IC_WS        :: 37 fields, listed in WSDL sequence order below
+// ZZCS_INFO_IC_WS: resuelve DNI/CUIT a interlocutor comercial + instalación.
+// Nombres de campo desde test/fixtures/zzcsInfoIcWs.wsdl.xml (WSDL real de
+// QA), no del PDF de integración de DPEC (generado desde proxy .NET,
+// equivocado en mayúsculas y contenido). UPPER_SNAKE, no PascalCase — ver
+// docs/hallazgos-tecnicos.md#convencion-de-nombres-de-campo-en-el-cable
 
 import type { WireField, XmlNode, SoapOperation, ServiceOutcome } from '../soap/types.js';
 import { toArray, extractText } from '../soap/parser.js';
@@ -24,12 +15,9 @@ export interface ZzcsInfoIcWsInput {
 }
 
 /**
- * All 37 fields of ZZTCS_INFO_IC_WS, in WSDL sequence order. Every value is
- * a STRING (design §3(B), parseTagValue: false) — PARTNER and ANLAGE carry
- * leading zeros that a numeric type would destroy. The API mainly uses
- * PARTNER, ANLAGE, IDNUMBER_DNI, NAME1_TEXT, STATUS, FACT_ADEUDADAS, DEUDA,
- * but every field is mapped: this repo's standard is faithfulness to the
- * contract, not a convenient subset (see zFicaDeudaIcUnif.ts/zWsSap002.ts).
+ * Los 37 campos de ZZTCS_INFO_IC_WS, en orden del WSDL. Todo valor es
+ * STRING: PARTNER y ANLAGE llevan ceros a la izquierda que un tipo numérico
+ * destruiría.
  */
 export interface OuInfoIcWsRow {
   readonly partner: string;
@@ -86,14 +74,10 @@ export function buildFields(input: ZzcsInfoIcWsInput): WireField[] {
 }
 
 /**
- * `responseNode` is already unwrapped to the `ZZCS_INFO_IC_WSResponse`
- * element (unwrapBody, soap/parser.ts) — this function never sees
- * Envelope/Body. `OU_INFO_IC_WS` is not in soap/parser.ts's parser-level
- * `LIST_ELEMENTS` allowlist (it is a container of item-wrapped rows, not
- * itself a repeated element), so `toArray` is doing the real work here:
- * defense #2 against the array-coercion trap (design §3(C)) — a single row
- * must never collapse into a bare object and read as recordCount 1 by luck
- * while silently mishandling 3.
+ * `responseNode` ya viene desenvuelto a `ZZCS_INFO_IC_WSResponse`.
+ * `OU_INFO_IC_WS` no está en el allowlist `isArray` del parser (es
+ * contenedor, no el elemento repetido); `toArray` hace el trabajo real de
+ * evitar que una sola fila colapse a objeto y falsee el recordCount.
  */
 export function parseResult(responseNode: XmlNode): ZzcsInfoIcWsOutput {
   const rows: OuInfoIcWsRow[] = toArray<XmlNode>(responseNode.OU_INFO_IC_WS).map((row) => ({
@@ -139,32 +123,16 @@ export function parseResult(responseNode: XmlNode): ZzcsInfoIcWsOutput {
   return { rows, ouResultado: extractText(responseNode.OU_RESULTADO) };
 }
 
-/**
- * OU_RESULTADO's code table is UNKNOWN — there is no WSDL enumeration and no
- * DPEC documentation for it, unlike WS01's poMensaje or WS02's eMsgnro. Two
- * values have been observed live against QA, and only two:
- *   "0"  — DNI 30955882 -> PARTNER 0030002708, ANLAGE 0060002445, STATUS
- *          DESCONECTADO, one populated row (2026-08-28).
- *   "99" — IN_NUMERO empty, zero rows, HTTP 200 (2026-09-01).
- * Following the precedent set by NO_DEBT_CODE in zFicaDeudaIcUnif.ts: a
- * narrow, evidence-backed rule, not a guess. "0" is treated as success
- * because it co-occurred with a genuinely successful lookup; every other
- * value is UNKNOWN and is reported verbatim as a business error rather than
- * silently assumed to be a failure code. Widen this only with a captured
- * response to back the addition — the rest of the table is unknown.
- *
- * The verdict deliberately does NOT depend on rows.length. A caller that
- * needs "resolved to exactly one account" must check recordCount itself:
- * PASS here means "SAP answered 0", not "a customer was found".
- *
- * OPERATIONAL HAZARD, verified 2026-09-01: a well-formed but non-existent
- * DNI (99999999) produces no answer at all — the RFC runs past a 30s client
- * timeout. This service has no "not found" response; it has a hang. Anything
- * with a request deadline in front of it needs its own timeout and a
- * deliberate answer for that case.
- */
+// OU_RESULTADO: tabla de códigos desconocida (sin enum de WSDL ni doc DPEC).
+// Únicos valores observados: "0" éxito (2026-08-28), "99" 0 filas HTTP 200
+// (2026-09-01). Todo lo demás es desconocido: se reporta verbatim, sin asumir.
 const KNOWN_SUCCESS_RESULTADO = '0';
 
+// PASS acá significa "SAP respondió 0", no "se encontró un cliente": el
+// veredicto no mira rows.length.
+//
+// DNI inexistente (ej. 99999999) no da error: el RFC cuelga hasta el timeout
+// de 30s del cliente, sin respuesta "no encontrado". Verificado 2026-09-01.
 export function summarize(output: ZzcsInfoIcWsOutput): ServiceOutcome {
   const isKnownSuccess = output.ouResultado.trim() === KNOWN_SUCCESS_RESULTADO;
   const businessMessage = isKnownSuccess ? [] : [{ code: output.ouResultado, text: '' }];
@@ -179,13 +147,12 @@ export function summarize(output: ZzcsInfoIcWsOutput): ServiceOutcome {
 export const zzcsInfoIcWs: SoapOperation<ZzcsInfoIcWsInput, ZzcsInfoIcWsOutput> = {
   serviceName: 'zzcs-info-ic-ws',
   operationName: 'ZZCS_INFO_IC_WS',
-  // ONLY targetNamespace in this service's WSDL — not the mc-style
-  // namespace the other two services use. See soap/types.ts's comment.
+  // Único targetNamespace de este WSDL, distinto del mc-style. Ver
+  // docs/hallazgos-tecnicos.md#namespace-y-soapaction-por-servicio
   namespace: 'urn:sap-com:document:sap:rfc:functions',
   endpointPath: '/sap/bc/srt/rfc/sap/zzcs_info_ic_ws/100/zcs_info_ic_ws/zcs_info_ic_ws',
-  // Non-empty, unlike the two mc-style services — verified against the WSDL
-  // binding, not guessed. See soap/types.ts / index.ts for why this is now
-  // authoritative and cannot be silently overridden by a config value.
+  // No vacío, a diferencia de los otros dos servicios — verificado contra el
+  // binding del WSDL, no supuesto.
   soapAction: 'urn:sap-com:document:sap:rfc:functions:ZZCS_INFO_IC_WS:ZZCS_INFO_IC_WSRequest',
   buildFields,
   parseResult,
