@@ -109,14 +109,21 @@ describe('zzcsInfoIcWs.parseResult — UPPER_SNAKE wire names, row counts', () =
 
 describe('zzcsInfoIcWs.summarize', () => {
   // OU_RESULTADO's code table is UNKNOWN — there is no WSDL enumeration and
-  // no DPEC documentation for it. The ONLY evidence in hand is one live call
-  // against QA on 2026-08-28 (DNI 30955882 -> PARTNER 0030002708, ANLAGE
-  // 0060002445, STATUS DESCONECTADO — see test/fixtures/zzcsInfoIcWs.response.xml
-  // and test/live-responses.test.ts), which returned OU_RESULTADO="0"
-  // alongside one genuinely populated row. Per the NO_DEBT_CODE precedent in
-  // zFicaDeudaIcUnif.ts, "0" is treated as success because it co-occurred
-  // with that successful lookup; every other value is unknown and reported
-  // as a business error rather than assumed to be a specific failure.
+  // no DPEC documentation for it. Two values have been observed live against
+  // QA, and only two:
+  //   "0"  — DNI 30955882 -> PARTNER 0030002708, ANLAGE 0060002445, STATUS
+  //          DESCONECTADO, one populated row (2026-08-28; see
+  //          test/fixtures/zzcsInfoIcWs.response.xml and live-responses.test.ts)
+  //   "99" — IN_NUMERO empty, zero rows, HTTP 200 (2026-09-01)
+  // Per the NO_DEBT_CODE precedent in zFicaDeudaIcUnif.ts, "0" is treated as
+  // success because it co-occurred with a genuinely successful lookup; every
+  // other value is unknown and reported as a business error rather than
+  // assumed to be a specific failure.
+  //
+  // A third case has no code at all: a well-formed but NON-EXISTENT DNI
+  // (99999999) never answers — the RFC runs past the 30s client timeout
+  // (2026-09-01). "Not found" is therefore not a response this service gives,
+  // it is a hang. Any caller with a request deadline must plan for that.
 
   it('OU_RESULTADO "0" with a populated row is PASS (the only observed value)', () => {
     const outcome = summarize({
@@ -143,6 +150,16 @@ describe('zzcsInfoIcWs.summarize', () => {
     const outcome = summarize({ ouResultado: '0', rows: [] });
     assert.equal(outcome.verdict, 'PASS');
     assert.equal(outcome.recordCount, 0);
+  });
+
+  it('OU_RESULTADO "99" with zero rows is FAIL — the second value observed live', () => {
+    // Captured 2026-09-01 by sending IN_NUMERO empty: HTTP 200, no rows, "99".
+    // This is the value that proves the service reports refusal in-band rather
+    // than by SOAP fault, so a 200 must never be read as success on its own.
+    const outcome = summarize({ ouResultado: '99', rows: [] });
+    assert.equal(outcome.verdict, 'FAIL');
+    assert.equal(outcome.recordCount, 0);
+    assert.deepEqual(outcome.businessMessage, [{ code: '99', text: '' }]);
   });
 
   it('any OU_RESULTADO other than the one observed success value is reported as a business error, not silently assumed', () => {

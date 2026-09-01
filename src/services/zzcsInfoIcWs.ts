@@ -141,16 +141,27 @@ export function parseResult(responseNode: XmlNode): ZzcsInfoIcWsOutput {
 
 /**
  * OU_RESULTADO's code table is UNKNOWN — there is no WSDL enumeration and no
- * DPEC documentation for it, unlike WS01's poMensaje or WS02's eMsgnro. The
- * ONLY evidence in hand is one live call against QA on 2026-08-28
- * (DNI 30955882 -> PARTNER 0030002708, ANLAGE 0060002445, STATUS
- * DESCONECTADO), which returned `OU_RESULTADO = "0"` alongside one populated
- * row. Following the precedent set by NO_DEBT_CODE in zFicaDeudaIcUnif.ts:
- * a narrow, evidence-backed rule, not a guess. "0" is treated as success
+ * DPEC documentation for it, unlike WS01's poMensaje or WS02's eMsgnro. Two
+ * values have been observed live against QA, and only two:
+ *   "0"  — DNI 30955882 -> PARTNER 0030002708, ANLAGE 0060002445, STATUS
+ *          DESCONECTADO, one populated row (2026-08-28).
+ *   "99" — IN_NUMERO empty, zero rows, HTTP 200 (2026-09-01).
+ * Following the precedent set by NO_DEBT_CODE in zFicaDeudaIcUnif.ts: a
+ * narrow, evidence-backed rule, not a guess. "0" is treated as success
  * because it co-occurred with a genuinely successful lookup; every other
  * value is UNKNOWN and is reported verbatim as a business error rather than
  * silently assumed to be a failure code. Widen this only with a captured
  * response to back the addition — the rest of the table is unknown.
+ *
+ * The verdict deliberately does NOT depend on rows.length. A caller that
+ * needs "resolved to exactly one account" must check recordCount itself:
+ * PASS here means "SAP answered 0", not "a customer was found".
+ *
+ * OPERATIONAL HAZARD, verified 2026-09-01: a well-formed but non-existent
+ * DNI (99999999) produces no answer at all — the RFC runs past a 30s client
+ * timeout. This service has no "not found" response; it has a hang. Anything
+ * with a request deadline in front of it needs its own timeout and a
+ * deliberate answer for that case.
  */
 const KNOWN_SUCCESS_RESULTADO = '0';
 
