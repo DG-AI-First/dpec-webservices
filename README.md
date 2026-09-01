@@ -148,9 +148,12 @@ Siempre con la misma forma: `{"error": {"codigo": "...", "mensaje": "..."}}`.
   quedar detrás de un gateway de DPEC) depende de quién la consuma.
 - **No tiene rate limiting.** Es un problema distinto de la autenticación: un
   cliente autenticado también puede enumerar.
-- El camino feliz de `/api/facturas` nunca se pudo verificar en vivo, porque
-  el único DNI de prueba que tenemos es de un cliente dado de baja en 2012.
-  Hace falta pedirle a DPEC un DNI de cliente **conectado**.
+- **No hay ningún DNI de prueba que llegue hasta `/api/facturas`.** El único
+  que tenemos es de un cliente dado de baja en 2012, así que la cadena
+  completa `dni → facturas` sólo se puede probar hasta el `409`. El camino
+  feliz de `/api/facturas` sí está verificado, pero entrando por
+  `partner`+`anlage` (ver "Datos de prueba"). Para cerrar el hueco hace falta
+  pedirle a DPEC un DNI de cliente **conectado**.
 
 ## Cómo comprobar que funciona
 
@@ -335,6 +338,9 @@ curl "http://127.0.0.1:3000/api/deuda?partner=0030002708"
 
 # 3) Facturas, con partner Y anlage directos (ZWsSap002 los exige a los dos)
 curl "http://127.0.0.1:3000/api/facturas?partner=0030002708&anlage=0060002445"
+# OJO: este devuelve 409 E9011, y está bien que así sea — esta persona está
+# desconectada desde 2012 y ZWsSap002 exige instalación activa. Para ver el
+# camino feliz de facturas, usá el caso del PDF que está más abajo.
 ```
 
 ### Valores de prueba conocidos
@@ -342,8 +348,8 @@ curl "http://127.0.0.1:3000/api/facturas?partner=0030002708&anlage=0060002445"
 | Origen | Valores | Estado |
 |---|---|---|
 | DNI de prueba | `DNI 30955882` → `PARTNER 0030002708`, `ANLAGE 0060002445` | **Verificado en vivo contra QA el 2026-09-01**: `/api/deuda` devuelve 1 factura impaga de $26,58. Cliente **desconectado desde 2012**, así que `/api/facturas` responde `409 E9011`. **Atención:** la consulta a `ZZCS_INFO_IC_WS` devuelve nombre y domicilio reales — este DNI puede corresponder a una persona real si QA es copia de producción, no asumas que es un dato inventado. |
-| PDF de integración de DPEC, `Z_FICA_DEUDA_IC_UNIF` | `PiIc=0010084414`, `PiNumMax=10` → 3 documentos (según el PDF) | **Valor de PRODUCCIÓN, nuestras credenciales son de QA — sin verificar, puede que no resuelva.** |
-| PDF de integración de DPEC, `Z_WS_SAP_002` | `IAnlage=0010099044`, `IPartner=0010099044`, `ICantfact=1` → 1 factura de $324.071,45 (según el PDF) | Mismo caveat: **PRODUCCIÓN, sin verificar.** |
+| PDF de integración de DPEC, `Z_FICA_DEUDA_IC_UNIF` | `PiIc=0010084414` | **Verificado contra QA el 2026-09-01: `200` con `documentos: []`.** El interlocutor existe en QA (no da error), pero no tiene deuda. El PDF muestra 3 documentos porque sus ejemplos son de PRODUCCIÓN. |
+| PDF de integración de DPEC, `Z_WS_SAP_002` | `IAnlage=0010099044`, `IPartner=0010099044`, `ICantfact=1` | **Verificado contra QA el 2026-09-01: `200` con 1 factura** (`opbel 001034259703`, vto. 2025-09-03, $215.242,78). El PDF dice $324.071,45 porque es el dato de PRODUCCIÓN: los identificadores son los mismos, los importes no. |
 
 Los dos valores del PDF, como curl (para probarlos de una sola pasada):
 
@@ -351,6 +357,16 @@ Los dos valores del PDF, como curl (para probarlos de una sola pasada):
 curl "http://127.0.0.1:3000/api/deuda?partner=0010084414&max=10"
 curl "http://127.0.0.1:3000/api/facturas?partner=0010099044&anlage=0010099044&max=1"
 ```
+
+**El segundo es hoy el único caso conocido que ejercita el camino feliz de
+`/api/facturas`**, porque el cliente del DNI de prueba está desconectado. Si
+tocás `ZWsSap002`, es el curl con el que verificás que no rompiste nada.
+
+Cuidado al transcribir esos dos números, que se parecen: el `PARTNER` y el
+`ANLAGE` de ese caso son **ambos `0010099044`**. Mandar `partner=0010099046`
+—un dígito distinto— devuelve `409 ZFICA017 · Instalación 10099046 diferente
+a recibida por parámetro 10099044`. Es la validación de correspondencia de
+`ZWsSap002` haciendo su trabajo, no un error del API.
 
 `evidence/` guarda capturas crudas de corridas viejas y está en `.gitignore`
 porque contienen datos de clientes sin anonimizar.
