@@ -3,7 +3,7 @@
 // para respuestas HTTP, sobre los mismos outcomes/ProbeError ya clasificados.
 
 import { BusinessError, ProbeError } from '../errors.js';
-import type { DeudaOutcome, FacturasOutcome } from '../flows/consultaPorDni.js';
+import type { ConsultaOutcomeError } from '../flows/consultaPorDni.js';
 
 export interface HttpErrorResponse {
   readonly status: number;
@@ -40,10 +40,8 @@ function mapProbeError(error: ProbeError): HttpErrorResponse {
   }
 }
 
-type NonOkOutcome = Exclude<DeudaOutcome | FacturasOutcome, { kind: 'ok' }>;
-
 /** Mapea un outcome no-ok de cualquiera de los dos flows a status + body HTTP. */
-export function mapOutcomeToHttpError(outcome: NonOkOutcome): HttpErrorResponse {
+export function mapOutcomeToHttpError(outcome: ConsultaOutcomeError): HttpErrorResponse {
   switch (outcome.kind) {
     case 'no-encontrado':
       return errorResponse(404, 'NO_ENCONTRADO', 'No se encontró un interlocutor comercial para el DNI informado.');

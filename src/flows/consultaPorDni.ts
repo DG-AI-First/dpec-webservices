@@ -52,12 +52,20 @@ async function resolveDniToPartner(call: OperationCaller, dni: string): Promise<
   return { kind: 'resuelto', partner: first.partner, anlage: first.anlage };
 }
 
-export type DeudaOutcome =
-  | { readonly kind: 'ok'; readonly partner: string; readonly documentos: readonly PoDocumento[] }
+/**
+ * Variantes de falla compartidas por los dos flows (todo menos 'ok'): mismo
+ * shape en ambos, así que server/mapOutcome.ts puede tratarlas de forma
+ * uniforme sin importar cuál de los dos flows las produjo.
+ */
+export type ConsultaOutcomeError =
   | { readonly kind: 'no-encontrado' }
   | { readonly kind: 'zzcs-rechazado'; readonly ouResultado: string }
   | { readonly kind: 'error-negocio'; readonly codigo: string; readonly mensaje: string }
   | { readonly kind: 'error'; readonly error: ProbeError };
+
+export type DeudaOutcome =
+  | ConsultaOutcomeError
+  | { readonly kind: 'ok'; readonly partner: string; readonly documentos: readonly PoDocumento[] };
 
 /** Deuda por DNI: ZZCS_INFO_IC_WS -> ZFicaDeudaIcUnif(piIc=PARTNER). piI/piCc/piFechaHasta quedan vacíos. */
 export async function consultarDeudaPorDni(
@@ -92,11 +100,8 @@ export async function consultarDeudaPorDni(
 }
 
 export type FacturasOutcome =
-  | { readonly kind: 'ok'; readonly partner: string; readonly facturas: readonly TFactRow[] }
-  | { readonly kind: 'no-encontrado' }
-  | { readonly kind: 'zzcs-rechazado'; readonly ouResultado: string }
-  | { readonly kind: 'error-negocio'; readonly codigo: string; readonly mensaje: string }
-  | { readonly kind: 'error'; readonly error: ProbeError };
+  | ConsultaOutcomeError
+  | { readonly kind: 'ok'; readonly partner: string; readonly facturas: readonly TFactRow[] };
 
 /**
  * Facturas por DNI: ZZCS_INFO_IC_WS -> ZWsSap002(iPartner=PARTNER, iAnlage=ANLAGE).
