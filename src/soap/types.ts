@@ -56,7 +56,11 @@ export interface SoapOperation<TInput, TOutput> {
   // namespace wrong (copying another service's) is an opaque HTTP 500.
   readonly namespace: string;
   readonly endpointPath: string; // '/sap/bc/srt/rfc/sap/z_ws_sap_002/...'
-  readonly soapAction: string; // '' by default — see live findings, non-factor
+  // Per-service, and load-bearing for at least one of them. The two mc-style
+  // services send '' (live findings: a non-factor there). ZZCS_INFO_IC_WS
+  // sends the value its WSDL binding declares. There is no global override:
+  // one string cannot be right for both, so this field is the only source.
+  readonly soapAction: string;
 
   buildFields(input: TInput): WireField[];
   parseResult(responseNode: XmlNode): TOutput;
