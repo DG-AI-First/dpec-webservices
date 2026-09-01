@@ -208,199 +208,208 @@
 <div class="wrap">
 
   <header>
-    <div class="eyebrow">Informe de diagnóstico &middot; 26 de agosto de 2026</div>
+    <div class="eyebrow">Informe de diagn&oacute;stico &middot; 28 de agosto de 2026</div>
     <h1>Web Services SAP de DPEC</h1>
     <p class="sub">
-      Resultado de las pruebas de conexión contra <code>Z_WS_SAP_002</code> (facturas)
-      y <code>Z_FICA_DEUDA_IC_UNIF</code> (estado de deuda), en los dos ambientes documentados.
+      Resultado de las pruebas de conexi&oacute;n contra <code>Z_WS_SAP_002</code> (facturas)
+      y <code>Z_FICA_DEUDA_IC_UNIF</code> (estado de deuda) en el ambiente QA.
     </p>
   </header>
 
   <div class="verdict">
     <div class="label">Veredicto</div>
-    <p class="lead">Ninguno de los dos servicios es accesible hoy. El bloqueo está del lado de DPEC.</p>
+    <p class="lead">Los dos servicios funcionan. El bloqueo era nuestro, no de DPEC.</p>
     <p class="note">
-      No es un problema de nuestra integración: llegamos a SAP en los dos ambientes y en ninguno
-      pudimos obtener una respuesta. En QA nos autentica, pero los servicios no están publicados.
-      En Producción los servicios existen, pero las credenciales que tenemos no son válidas.
+      Con las URLs de los WSDL que DPEC nos envi&oacute; el 28 de agosto, los dos servicios
+      pasaron a responder HTTP 200 con datos reales el mismo d&iacute;a. Los HTTP 500 que
+      ven&iacute;amos reportando los produc&iacute;a nuestro cliente, por tres defectos en la
+      construcci&oacute;n del mensaje SOAP. Este informe reemplaza al del 26 de agosto, que
+      atribu&iacute;a el bloqueo a una configuraci&oacute;n faltante en SOAMANAGER.
     </p>
   </div>
 
   <section>
-    <h2>Qué pasa en cada ambiente</h2>
+    <h2>Estado actual</h2>
     <div class="scroll">
       <table>
         <thead>
           <tr>
-            <th>Ambiente</th>
-            <th>Conexión</th>
-            <th>Credenciales</th>
-            <th>Servicio operativo</th>
-            <th>Respuesta</th>
+            <th>Servicio</th>
+            <th>HTTP</th>
+            <th>Resultado</th>
+            <th>Datos devueltos</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td class="env">sapqas<br><span class="dim">QA</span></td>
+            <td class="env">Z_FICA_DEUDA_IC_UNIF<br><span class="dim">estado de deuda</span></td>
+            <td>200</td>
             <td><span class="pill ok">OK</span></td>
-            <td><span class="pill ok">VÁLIDAS</span></td>
-            <td><span class="pill no">NO</span></td>
-            <td>HTTP 500<br><span class="dim">SOAP Fault</span></td>
+            <td>1 documento &middot; c&oacute;digo <code>000</code><br><span class="dim">Estado de deuda devuelto correctamente</span></td>
           </tr>
           <tr>
-            <td class="env">sapprd<br><span class="dim">Producción</span></td>
+            <td class="env">Z_WS_SAP_002<br><span class="dim">&uacute;ltimas N facturas</span></td>
+            <td>200</td>
             <td><span class="pill ok">OK</span></td>
-            <td><span class="pill no">RECHAZADAS</span></td>
-            <td><span class="pill maybe">PROBABLE</span></td>
-            <td>HTTP 401<br><span class="dim">Unauthorized</span></td>
+            <td>10 facturas<br><span class="dim">sin mensaje de error</span></td>
           </tr>
         </tbody>
       </table>
     </div>
     <p>
-      Las credenciales entregadas son de QA, y QA es justamente el ambiente donde los servicios
-      no están configurados. Producción sí tendría los servicios activos —las capturas de SoapUI
-      de la documentación oficial fueron hechas contra <code>sapprd</code>—, pero ahí no tenemos acceso.
-    </p>
-    <p>
-      Conviene distinguir dos capas que en SAP son independientes: <strong>SICF</strong> activa el
-      nodo HTTP y <strong>SOAMANAGER</strong> configura el binding del servicio. En QA la primera
-      está hecha y la segunda no: el servicio está <em>expuesto</em> pero no <em>configurado</em>.
+      Ambas respuestas est&aacute;n guardadas como evidencia cruda y promovidas a la bater&iacute;a
+      de pruebas del proyecto, con los identificadores anonimizados. Dejaron de ser suposiciones:
+      son ahora el contrato contra el que se valida el cliente.
     </p>
   </section>
 
   <section>
-    <h2>Verificación independiente, sin nuestro código de por medio</h2>
+    <h2>Qu&eacute; estaba mal de nuestro lado</h2>
     <p>
-      Para descartar que la falla estuviera en el cliente que desarrollamos, se repitieron las
-      pruebas desde un navegador común, con las mismas credenciales y sin ningún software nuestro
-      involucrado:
+      Los tres defectos estaban en el armado del sobre SOAP. Los tres se resolvieron leyendo el
+      WSDL, y ninguno era visible sin &eacute;l:
     </p>
     <ul class="checks">
-      <li><span class="mark y">QA</span><span>La URL completa devuelve <strong>HTTP 415</strong> (<em>Unsupported Media Type</em>). El endpoint existe, las credenciales son aceptadas, y rechaza el pedido porque un navegador envía un GET vacío mientras el servicio espera un POST con <code>text/xml</code>. Un servicio inexistente habría devuelto 404.</span></li>
-      <li><span class="mark n">PROD</span><span>El diálogo de usuario y contraseña reaparece indefinidamente. Esa es la manifestación visual del HTTP 401: el servidor sigue rechazando la credencial.</span></li>
+      <li><span class="mark n">1</span><span>
+        <strong>Namespace equivocado en el elemento de operaci&oacute;n.</strong> Enviábamos
+        <code>urn:sap-com:document:sap:rfc:functions</code>. El correcto es
+        <code>urn:sap-com:document:sap:soap:functions:mc-style</code>; el primero es
+        &uacute;nicamente el esquema de los tipos escalares y nunca es namespace de cuerpo.
+      </span></li>
+      <li><span class="mark n">2</span><span>
+        <strong>Elementos hijos con prefijo de namespace.</strong> Ning&uacute;n WSDL declara
+        <code>elementFormDefault</code>, con lo cual XML Schema lo interpreta como
+        <em>unqualified</em>: s&oacute;lo el elemento de operaci&oacute;n va calificado y sus hijos
+        van sin prefijo. Prefijarlos ubicaba cada par&aacute;metro fuera del namespace donde SAP
+        los busca.
+      </span></li>
+      <li><span class="mark n">3</span><span>
+        <strong>Faltaban las tablas de salida en el pedido de <code>Z_FICA_DEUDA_IC_UNIF</code>.</strong>
+        En el estilo <em>mc-style</em>, <code>PoDocumentos</code> y <code>PoMensaje</code> forman
+        parte de la secuencia del elemento de entrada y no llevan <code>minOccurs="0"</code>: son
+        obligatorias en el pedido aunque s&oacute;lo transporten datos en la respuesta.
+      </span></li>
     </ul>
     <p>
-      Ambos resultados coinciden exactamente con lo que había reportado nuestro script, por dos
-      caminos técnicamente independientes.
+      Adem&aacute;s, y con consecuencias m&aacute;s silenciosas: los nombres de campo del PDF de
+      integraci&oacute;n (<code>piIcField</code>, <code>totalAmntField</code>) provienen de una clase
+      proxy de C#, no del formato real del mensaje. El cable usa <code>PiIc</code> y
+      <code>TotalAmnt</code>. Le&iacute;dos con la grafía equivocada, los campos no dan error:
+      dan vac&iacute;o, que es indistinguible de una cuenta sin movimientos.
     </p>
   </section>
 
   <section>
-    <h2>Qué se descartó</h2>
-    <p>Antes de atribuir la falla, se verificó punto por punto que el problema no fuera nuestro:</p>
+    <h2>Por qu&eacute; el diagn&oacute;stico anterior fue err&oacute;neo</h2>
+    <p>
+      El informe del 26 de agosto conclu&iacute;a que el binding no estaba configurado en
+      SOAMANAGER. La observaci&oacute;n en la que se apoyaba era real, pero la conclusi&oacute;n
+      no se segu&iacute;a de ella. Vale la pena dejar registrado el razonamiento, porque el modo
+      de fallar es reutilizable:
+    </p>
     <ul class="checks">
-      <li><span class="mark y">OK</span><span>La red y el DNS resuelven los dos hosts.</span></li>
-      <li><span class="mark y">OK</span><span>El certificado TLS valida sin necesidad de una CA interna. La documentación indica <code>http://</code>, pero <code>https://</code> funciona correctamente.</span></li>
-      <li><span class="mark y">OK</span><span>La autenticación en QA funciona: SAP devuelve el usuario técnico <code>WSMICTS</code> dentro de su propia respuesta de error.</span></li>
-      <li><span class="mark y">OK</span><span>El mensaje SOAP que enviamos es válido. SAP responde <code>faultcode: soap-env:Server</code>, y en el estándar SOAP <code>Server</code> significa que la falla es del proveedor; si nuestro mensaje estuviera mal, respondería <code>Client</code>.</span></li>
-      <li><span class="mark y">OK</span><span>No depende de los parámetros enviados: el segundo servicio falla en 187 ms, sin llegar a procesarlos.</span></li>
-      <li><span class="mark y">OK</span><span>No es el encabezado <code>SOAPAction</code>. Se probaron seis variantes —omitirlo por completo, vacío entre comillas, vacío sin comillas, el nombre de la operación, el URN completo y el URN con sufijo <code>Request</code>— y las seis devolvieron exactamente el mismo error.</span></li>
-      <li><span class="mark y">OK</span><span>No es la codificación de la contraseña: es ASCII puro, con lo cual UTF-8 e ISO-8859-1 producen bytes idénticos y el encabezado enviado es el mismo que armaría cualquier cliente.</span></li>
-      <li><span class="mark n">FALLA</span><span>Los servicios no tienen configuración de binding activa en el ambiente QA.</span></li>
+      <li><span class="mark n">A</span><span>
+        Ped&iacute;amos el WSDL agregando <code>?wsdl</code> al endpoint de ejecuci&oacute;n. En
+        este sistema esa no es la URL de metadatos. La correcta tiene la forma
+        <code>/sap/bc/srt/wsdl/flv_&lt;id&gt;/bndg_url/&lt;endpoint&gt;</code>, y sobre ella los
+        dos servicios devuelven un WSDL v&aacute;lido con HTTP 200. El binding
+        <strong>siempre estuvo configurado</strong>.
+      </span></li>
+      <li><span class="mark n">B</span><span>
+        Interpretamos <code>faultcode: soap-env:Server</code> como prueba de que la falla era del
+        proveedor. En el est&aacute;ndar SOAP eso significa que el error ocurri&oacute; procesando
+        el mensaje, no que el mensaje fuera correcto. SAP devuelve <code>Server</code> tambi&eacute;n
+        cuando el cuerpo llega en un namespace que no reconoce.
+      </span></li>
+      <li><span class="mark n">C</span><span>
+        El texto del fault de SAP es gen&eacute;rico y no nombra el campo, el namespace ni el
+        par&aacute;metro. Al ser compatible con cualquier hip&oacute;tesis, no refutaba la
+        nuestra &mdash; y lo tomamos como si la confirmara. Un mensaje que nunca contradice nada
+        tampoco confirma nada.
+      </span></li>
     </ul>
-  </section>
-
-  <section>
-    <h2>La causa exacta en QA</h2>
     <p>
-      Al solicitar el WSDL de cada servicio, SAP devuelve un error interno que identifica el problema
-      con precisión:
-    </p>
-    <pre>&lt;error&gt;
-  &lt;user&gt;WSMICTS&lt;/user&gt;
-  &lt;date&gt;20260826&lt;/date&gt;
-  &lt;time&gt;223948&lt;/time&gt;
-  &lt;errorText&gt;<span class="hl">WSP Exception caught: Initial value "config key" in method INITIALIZE of</span>&lt;/errorText&gt;
-  &lt;bindingKey&gt;965CD95BF9BFFA65E10000000A010216&lt;/bindingKey&gt;
-&lt;/error&gt;</pre>
-    <p>
-      <strong>WSP</strong> es el <em>Web Service Provider</em> de SAP. El mensaje indica que el binding
-      del servicio existe, pero no tiene una configuración asociada. Para exponer un RFC como web service
-      hacen falta dos cosas: la definición del servicio y una configuración de binding activa en
-      SOAMANAGER. La segunda no está hecha en QA, para ninguno de los dos servicios.
+      Lo &uacute;nico que se sostiene del informe anterior es el estado de las credenciales de
+      Producci&oacute;n, que siguen siendo rechazadas con HTTP 401.
     </p>
   </section>
 
   <section>
-    <h2>Qué necesitamos de DPEC</h2>
+    <h2>Qu&eacute; necesitamos de DPEC</h2>
     <div class="ask">
       <div class="opt">
-        <div class="rank">Opción preferida</div>
-        <h3>Publicar los dos servicios en QA</h3>
+        <div class="rank">&Uacute;nico pedido pendiente</div>
+        <h3>Juegos de instalaci&oacute;n e interlocutor que se correspondan</h3>
         <p>
-          Crear y activar la configuración de binding en SOAMANAGER para ambos servicios en
-          <code>sapqas</code>. Es la mejor opción porque deja un ambiente de pruebas utilizable
-          para todo el desarrollo posterior, sin tocar producción en ningún momento.
+          <code>Z_WS_SAP_002</code> valida que la instalaci&oacute;n pertenezca al interlocutor
+          comercial. Si no se corresponden, responde HTTP 200 con
+          <code>ZFICA017 &mdash; Instalaci&oacute;n X diferente a recibida por par&aacute;metro Y</code>
+          y sin facturas. Necesitamos algunos pares v&aacute;lidos de QA para cubrir los casos de
+          prueba: con deuda, sin deuda, y con nota de cr&eacute;dito.
         </p>
       </div>
       <div class="opt">
-        <div class="rank">También necesario</div>
-        <h3>Un juego de datos de prueba en QA</h3>
+        <div class="rank">&Uacute;til, no bloqueante</div>
+        <h3>La tabla de c&oacute;digos de <code>PoMensaje</code></h3>
         <p>
-          Qué número de instalación o interlocutor comercial tiene facturas cargadas en el
-          ambiente de pruebas. Sin ese dato, aun con el binding configurado, la respuesta
-          correcta de una cuenta vacía es indistinguible de una falla: en ambos casos llegan
-          cero registros.
+          Conocemos dos por evidencia: <code>000</code> (estado de deuda devuelto) y
+          <code>001</code> (sin deuda registrada), ambos casos de &eacute;xito. Hoy tratamos
+          cualquier otro c&oacute;digo como error de negocio. Con la tabla completa podemos
+          distinguir un resultado v&aacute;lido de una falla real en vez de suponerlo.
         </p>
       </div>
       <div class="opt">
-        <div class="rank">Alternativa</div>
-        <h3>Credenciales de Producción</h3>
+        <div class="rank">Observaci&oacute;n</div>
+        <h3>Tiempo de respuesta sin par&aacute;metros</h3>
         <p>
-          Habilitar un usuario con acceso a los dos servicios en <code>sapprd</code>. Funciona,
-          pero obliga a desarrollar y probar contra el sistema productivo, lo cual no es deseable.
+          Invocado con instalaci&oacute;n e interlocutor vac&iacute;os,
+          <code>Z_WS_SAP_002</code> no acota la b&uacute;squeda y el proxy corta la conexi&oacute;n
+          a los 60 segundos con un <code>504</code>. Con par&aacute;metros v&aacute;lidos responde
+          en menos de un segundo. Lo mencionamos por si conviene validar la entrada del lado del
+          RFC.
         </p>
       </div>
     </div>
-    <p>Para que el equipo Basis de DPEC ubique los errores en su log (transacción SRTUTIL):</p>
-    <dl class="ids">
-      <dt>Z_WS_SAP_002</dt>
-      <dd>bindingKey 965CD95BF9BFFA65E10000000A010216</dd>
-      <dt>Z_FICA_DEUDA_IC_UNIF</dt>
-      <dd>bindingKey 3CB96C5571986D30E10000000A010228</dd>
-      <dt>Transacción</dt>
-      <dd>386BDE44326A0040E006A6F8652D99A4</dd>
-      <dt>Transacción</dt>
-      <dd>386BDE44326A0090E006A4F8DDE46BDE</dd>
-      <dt>Fecha y hora</dt>
-      <dd>26/08/2026 &middot; 22:39 (hora del sistema SAP)</dd>
-    </dl>
   </section>
 
   <section>
-    <h2>Cómo se probó</h2>
+    <h2>C&oacute;mo se prob&oacute;</h2>
     <p>
-      Se desarrolló un script en Node.js que construye el mensaje SOAP siguiendo la documentación
-      técnica de DPEC y guarda en disco los bytes exactos enviados y recibidos en cada llamada.
-      Cada corrida queda registrada como evidencia reproducible.
+      Con un script en Node.js que construye el mensaje SOAP y guarda en disco los bytes exactos
+      enviados y recibidos en cada llamada. Cada corrida queda registrada como evidencia
+      reproducible, y las respuestas reales quedaron incorporadas a la bater&iacute;a de pruebas
+      automatizadas del proyecto.
     </p>
     <p>
-      Las pruebas contra QA se repitieron con distintas variantes hasta agotar las hipótesis
-      atribuibles a nuestro cliente. Contra Producción se realizó <strong>una sola llamada</strong>,
-      de solo lectura y sin reintentos, para confirmar el estado de las credenciales: reintentar
-      combinaciones de autenticación contra un sistema productivo resulta indistinguible de un
-      ataque en los registros del proveedor.
+      El diagn&oacute;stico del namespace se hizo comparando tres variantes del mismo mensaje
+      contra el endpoint de QA en una &uacute;nica sesi&oacute;n: la que ven&iacute;amos enviando,
+      una con el namespace corregido, y una con el namespace corregido y los hijos sin prefijo.
+      S&oacute;lo la tercera dej&oacute; de devolver 500.
+    </p>
+    <p>
+      Contra Producci&oacute;n se realiz&oacute; una sola llamada, de s&oacute;lo lectura y sin
+      reintentos, para confirmar el estado de las credenciales: reintentar combinaciones de
+      autenticaci&oacute;n contra un sistema productivo resulta indistinguible de un ataque en los
+      registros del proveedor.
     </p>
   </section>
 
   <section>
     <h2>Estado del desarrollo</h2>
     <p>
-      El trabajo de integración no quedó detenido a la espera de la respuesta. El cliente está
-      construido y probado en su totalidad: consume ambos servicios, resuelve la autenticación,
-      registra la evidencia y clasifica los resultados distinguiendo un error del proveedor de
-      una falla de red o de un rechazo de credenciales.
+      El cliente consume los dos servicios contra QA, resuelve la autenticaci&oacute;n, registra la
+      evidencia y clasifica los resultados distinguiendo un error de negocio de una falla de red o
+      de un rechazo de credenciales. Un HTTP 200 con mensaje de error de negocio se reporta como
+      falla, no como &eacute;xito.
     </p>
     <p>
-      Lo único pendiente de nuestro lado es la ejecución contra un servicio que responda. En
-      cuanto DPEC habilite la configuración, la verificación completa toma minutos y no requiere
-      desarrollo adicional.
+      Con los juegos de datos de prueba podemos cerrar la verificaci&oacute;n funcional completa.
+      No queda desarrollo pendiente para eso.
     </p>
   </section>
 
   <footer>
-    <div>Informe generado el 26 de agosto de 2026 &middot; Evidencia completa disponible en el repositorio del proyecto.</div>
+    <div>Informe generado el 28 de agosto de 2026 &middot; Reemplaza al informe del 26 de agosto &middot; Evidencia completa disponible en el repositorio del proyecto.</div>
     <div>Servicios evaluados: Z_WS_SAP_002 &middot; Z_FICA_DEUDA_IC_UNIF</div>
   </footer>
 

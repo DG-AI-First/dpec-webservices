@@ -7,8 +7,8 @@ cruda de lo que pasó por el cable.
 
 Este documento es el traspaso para quien continúe la integración. Registra
 lo que aprendimos **probando en vivo contra el sistema de DPEC**, no sólo
-cómo correr el script — leé "Hallazgos empíricos" y "Bloqueo actual" antes
-de tocar la capa SOAP.
+cómo correr el script — leé "Hallazgos empíricos" antes de tocar la capa
+SOAP, y en particular "Corrección al diagnóstico anterior".
 
 ## Arranque rápido
 
@@ -58,150 +58,148 @@ La regla que sostiene todo: **ningún identificador de dominio puede aparecer
 dentro de `src/soap/`**. Si `transport.ts` alguna vez menciona `tFact`, la
 costura se filtró y el valor de reuso se perdió. Es verificable leyendo.
 
-## Hallazgos empíricos (en vivo contra QA, 27-08-2026)
+## Hallazgos empíricos (en vivo contra QA)
 
-Estos corrigen o resuelven las incógnitas del PDF de integración de DPEC. La
-evidencia está en `evidence/spike-*/` y la produjeron los scripts de
-diagnóstico que quedaron en la raíz del repo (`spike.mjs`,
-`soapaction-test.mjs`, `wsdl-check.mjs`), conservados como instrumentos
-reutilizables.
+Estos corrigen las incógnitas del PDF de integración de DPEC. El punto de
+quiebre fue el **28-08-2026**, cuando DPEC nos pasó las URLs de los WSDL: con
+el contrato a la vista, los dos servicios pasaron a devolver HTTP 200 con
+datos reales el mismo día. Los WSDL están promovidos a `test/fixtures/`.
 
 1. **`https://` es lo correcto, no `http://` como dice el documento.** El
-   esquema en texto plano del PDF no funciona; la captura de SoapUI y todas
-   nuestras llamadas en vivo usaron TLS. La cadena de certificados valida sin
-   CA interna. `DPEC_SCHEME` default `https`, configurable por si alguna vez
-   depende del ambiente.
+   esquema en texto plano del PDF no funciona. La cadena de certificados
+   valida sin CA interna. `DPEC_SCHEME` default `https`.
 
-2. **El `SOAPAction` quedó descartado como factor.** `soapaction-test.mjs`
-   probó seis variantes contra el endpoint vivo de QA — omitido por
-   completo, `""` entre comillas, vacío sin comillas, el nombre de la
-   operación, el URN completo, y URN+`Request` — y **las seis devolvieron el
-   fault byte por byte idéntico**. Sea lo que sea que está mal, no es ese
-   header. El probe lo deja en `""` y mantiene la perilla
-   (`DPEC_SOAP_ACTION`) por si cambia cuando el binding esté configurado.
+   El `soap:address` del WSDL apunta a `http://erpqas2.dpec.com.ar:8002` — el
+   host interno del SAP. Afuera hay un nginx que termina TLS sobre
+   `sapqas.dpec.com.ar`. **No uses el address del WSDL**: es la dirección que
+   ve DPEC puertas adentro, no la nuestra.
 
-3. **Los nombres de campo del PDF de DPEC son artefactos de un proxy .NET,
-   no el formato del cable — este es el hallazgo más consecuente.** El
-   documento lista nombres como `piIcField` y `totalAmntField` porque fue
-   redactado desde una clase proxy de C# (la convención de backing field de
-   `svcutil`/`xsd.exe`), no desde el XML real. **El formato real es
-   PascalCase sin el sufijo `Field`**: `PiIc`, `TotalAmnt`, `IAnlage`,
-   `ICantfact`.
+2. **El namespace del elemento de operación es
+   `urn:sap-com:document:sap:soap:functions:mc-style`.** Éste fue el bug
+   principal. `urn:sap-com:document:sap:rfc:functions` — el que usábamos,
+   tomado del PDF — es sólo el schema de los TIPOS escalares (`char10`,
+   `curr13.2`) y nunca es namespace de body. Con el equivocado, SAP devuelve
+   HTTP 500 con un fault genérico que no nombra nada: "Error en el
+   tratamiento de servicio web".
 
-   Importa muchísimo porque **SAP RFC ignora en silencio los elementos XML
-   que no reconoce**: si mandás `<urn:piIcField>`, SAP no rechaza la
-   llamada, trata el parámetro como vacío y devuelve un resultado *vacío*
-   perfectamente creíble. Es una respuesta equivocada silenciosa,
-   indistinguible de "este interlocutor no tiene deuda" si no conocés esto.
+3. **Los hijos van SIN prefijo de namespace.** Ningún WSDL declara
+   `elementFormDefault`, así que XML Schema lo toma como *unqualified*: sólo
+   `<urn:ZWsSap002>` va calificado, `<IAnlage>` va pelado. Prefijarlos pone
+   cada parámetro en un namespace donde SAP no mira — mismo 500 opaco.
 
-   `src/soap/envelope.ts` tiene un guard en runtime (`assertWireName`) que
-   lanza error si alguna vez se pasa un nombre terminado en `Field` o que
-   arranque en minúscula, justamente para que el error no pueda repetirse.
+4. **`ZFicaDeudaIcUnif` exige `PoDocumentos` y `PoMensaje` en el REQUEST.**
+   En mc-style las tablas de salida del RFC están en la secuencia del
+   elemento de entrada y no llevan `minOccurs="0"`: son obligatorias a la ida
+   aunque sólo traigan datos a la vuelta. Sin ellas, con el namespace ya
+   corregido, seguía dando 500 a los 145 ms. `ZWsSap002` **no** tiene esta
+   particularidad: su elemento de entrada es sólo `IAnlage`, `ICantfact`,
+   `IPartner`.
 
-4. **Todos los valores se mantienen como string** (`parseTagValue: false`).
-   Si dejás que el parser convierta, `exbel: 0090001234` se vuelve
-   `90001234` y perdés los ceros a la izquierda de un documento legal de
-   forma irreversible; `eMsgnro: '000'` se vuelve `0` y destruye la señal de
-   éxito. La evidencia tiene que reproducir lo que SAP dijo, no una
-   interpretación.
+5. **PascalCase sin sufijo `Field`, también al LEER la respuesta.** El PDF
+   lista `piIcField`, `totalAmntField` porque fue redactado desde una clase
+   proxy de C# (`svcutil`/`xsd.exe`), no desde el XML. El cable dice `PiIc`,
+   `TotalAmnt`, `IAnlage`.
 
-5. **Windows: nunca usar `process.exit()` acá.** Salir así mientras undici
-   todavía tiene sockets cerrándose aborta el proceso con
-   `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` y devuelve
-   **127** en lugar del código calculado — o sea, destruye el contrato de
-   exit codes, que es todo el valor de esta herramienta. La consola mostraba
-   el número correcto y el proceso devolvía otro. `closeTransport()` libera
-   los sockets y `index.ts` setea `process.exitCode`. Cubierto por
-   `test/exit-contract.test.ts` contra un server local.
+   La mitad peligrosa de esto estaba del lado de la lectura: `removeNSPrefix`
+   quita prefijos pero **no cambia mayúsculas**. Leer `responseNode.tFact`
+   cuando el cable dice `TFact` da `undefined`, que `toArray()` convierte en
+   `[]` — una respuesta vacía perfectamente creíble sobre una respuesta que
+   traía diez facturas. `envelope.ts` tiene `assertWireName` para la
+   escritura, y los tests por servicio tienen un caso "camelCase wire names
+   are NOT accepted" para la lectura.
 
-## Bloqueo actual (al 27-08-2026) — es de DPEC, en los dos ambientes
+6. **El `SOAPAction` quedó descartado como factor.** `soapaction-test.mjs`
+   probó seis variantes contra QA y las seis devolvieron el mismo fault byte
+   por byte. El WSDL confirma `soapAction=""`. El probe lo deja en `""`.
 
-Los dos servicios devuelven **HTTP 500** en QA con un SOAP Fault:
+7. **Todos los valores se mantienen como string** (`parseTagValue: false`).
+   Confirmado contra datos reales: `Opbel: 000315264253` perdería los ceros,
+   el `CodBarraVisual` de 36 dígitos se volvería notación científica, y un
+   importe negativo (`-5517.9`, una nota de crédito) perdería precisión.
 
-```
-Error en el tratamiento de servicio web; Más detalles en log de error de
-servicio web en la página de proveedor (Cronomarcador UTC ...; ID de
-transacción ...)
-```
+8. **`EMsgnro` es alfanumérico, no un número de tres dígitos.** El código real
+   observado es `ZFICA017` (clase de mensaje ABAP + número). Los fixtures
+   reconstruidos suponían `"042"`. `classifyBusinessMessage` no depende de que
+   sea numérico, pero el supuesto estaba escrito.
 
-`wsdl-check.mjs` confirma que el nodo SICF **sí está activo**: un GET
-autenticado a `?wsdl` devuelve HTTP 200 con un `<error>` propietario de SAP
-(no un WSDL, no un 404) cuyo texto es:
+9. **`ZWsSap002` valida que la instalación pertenezca al interlocutor.** Pasar
+   `IAnlage` e `IPartner` que no se corresponden devuelve **HTTP 200** con
+   `ZFICA017 — Instalación X diferente a recibida por parámetro Y` y `TFact`
+   vacío. Dejar `IAnlage` vacío no saltea la validación. HTTP 200 no
+   significa éxito: el veredicto sale del par `EMsgnro`/`EMsgtxt`, no del
+   status.
 
-```
-WSP Exception caught: Initial value "config key"
-```
+10. **Con los dos parámetros vacíos, `ZWsSap002` se cuelga.** El RFC barre sin
+    filtro y el nginx de DPEC corta a los **60 s** con un `504 Gateway
+    Time-out` en HTML — no un fault de SAP. Con parámetros válidos responde en
+    menos de un segundo. El `DPEC_TIMEOUT_MS` default de 30 s aborta antes de
+    ver el 504; subilo si querés capturarlo como evidencia.
 
-Ese mensaje es el diagnóstico propio de SAP para **"este binding de web
-service no tiene entrada de configuración en SOAMANAGER"**. Es decir: el
-endpoint existe y autentica, pero nadie terminó de publicar el servicio del
-lado de DPEC. No es algo que podamos arreglar nosotros.
+11. **Windows: nunca usar `process.exit()` acá.** Salir así mientras undici
+    todavía tiene sockets cerrándose aborta el proceso con
+    `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` y devuelve **127**
+    en lugar del código calculado — destruye el contrato de exit codes, que es
+    todo el valor de esta herramienta. `closeTransport()` libera los sockets e
+    `index.ts` setea `process.exitCode`. Cubierto por
+    `test/exit-contract.test.ts`.
 
-En SAP son dos capas separadas y conviene tenerlas claras: **SICF** activa el
-nodo HTTP (por eso responde y no da 404) y **SOAMANAGER** configura el
-binding (por eso el `config key` vacío). El servicio está *expuesto* pero no
-*configurado*.
+### Corrección al diagnóstico anterior
 
-Las credenciales agravan el bloqueo en vez de ofrecer una salida:
+Una versión previa de este README atribuía el bloqueo a DPEC: decía que el
+binding no estaba configurado en SOAMANAGER, basándose en que un GET a
+`<endpoint>?wsdl` devolvía `WSP Exception caught: Initial value "config key"`
+en vez de un WSDL. **Esa conclusión era incorrecta.**
 
-| Ambiente | Autenticación | Servicio configurado |
-|---|---|---|
-| QA (`sapqas.dpec.com.ar`) | autentica (usuario `WSMICTS`) | no — binding sin configurar |
-| PROD (`sapprd.dpec.com.ar`) | **401, rechazada** | presumiblemente sí (las capturas de SoapUI del PDF de DPEC son contra PROD) |
+El error estaba en el razonamiento, no en la observación: el `?wsdl` sobre el
+endpoint de runtime no es la URL de metadata de este sistema. La URL real
+tiene otra forma —
+`/sap/bc/srt/wsdl/flv_<id>/bndg_url/<path del endpoint>?sap-client=100` — y
+sobre ella los dos servicios devuelven WSDL válido, HTTP 200. El binding
+**siempre estuvo configurado**. Los 500 eran nuestros, por los puntos 2, 3 y 4.
 
-O sea: las credenciales que tenemos son de QA, y QA es exactamente el
-ambiente donde los servicios todavía no están publicados.
+Vale la pena tener presente cómo se sostuvo el error tanto tiempo: el fault de
+SAP es genérico y no nombra el campo ni el namespace, así que no contradecía
+ninguna hipótesis. Un mensaje compatible con todo no confirma nada — y
+nosotros lo leímos como confirmación.
 
-Verificado además **por una vía independiente del script**, desde el
-navegador: en QA la URL completa con credenciales devuelve **HTTP 415**
-(Unsupported Media Type — el endpoint existe, autentica, y rechaza el GET
-vacío del navegador porque espera un POST con `text/xml`), y en PROD el
-diálogo de usuario y contraseña reaparece indefinidamente, que es la forma
-visual del 401. Si alguna vez se plantea que el problema es del cliente, ahí
-está la respuesta sin código de por medio.
+Lo único que sigue siendo cierto de aquel diagnóstico es que las credenciales
+de PROD dan 401. No se probaron variantes: reintentar combinaciones contra un
+SAP productivo se ve idéntico a credential stuffing en los logs de DPEC.
 
-**Nota deliberada sobre PROD:** no se probaron variantes de credenciales
-contra producción. Reintentar combinaciones de autenticación contra un SAP
-productivo se ve idéntico a un intento de credential stuffing en los logs de
-DPEC. Una llamada autorizada, un resultado, y se paró ahí. El 401 volvió en
-158 ms, lo que confirma que la red y el TLS estaban bien y que sólo se
-rechazó la credencial.
+## Estado actual — los dos servicios funcionan
 
-**Qué pedirle a DPEC, en orden de preferencia:**
+Corrida en vivo del 28-08-2026, `npm run probe` contra QA:
 
-1. **Publicar los dos servicios en QA** con el binding configurado en
-   SOAMANAGER. Destraba todo el desarrollo sin tocar producción. Los
-   `bindingKey` para que su equipo Basis los ubique en SRTUTIL:
-   - `Z_WS_SAP_002` → `965CD95BF9BFFA65E10000000A010216`
-   - `Z_FICA_DEUDA_IC_UNIF` → `3CB96C5571986D30E10000000A010228`
-2. **Un juego de datos de prueba en QA**: qué número de instalación o
-   interlocutor comercial tiene facturas cargadas. Sin esto, aunque
-   configuren el binding, vamos a recibir una respuesta correcta con cero
-   registros y no vamos a poder distinguir "anduvo" de "no anduvo".
-3. Si nada de lo anterior es posible, **credenciales de PROD** — peor
-   opción, porque obliga a desarrollar y probar contra el SAP productivo.
+| Servicio | HTTP | Veredicto | Filas |
+|---|---|---|---|
+| `Z_FICA_DEUDA_IC_UNIF` | 200 | PASS | 1 documento, `[000] Estado de deuda devuelto correctamente` |
+| `Z_WS_SAP_002` | 200 | PASS | 10 facturas, sin mensaje de negocio |
+
+Para reproducirlo hacen falta datos de prueba coherentes en el `.env`:
+`DPEC_ANLAGE` y `DPEC_PARTNER` **tienen que corresponderse** entre sí, o el
+servicio contesta `ZFICA017` (ver hallazgo 9).
+
+Queda una sola convención sin confirmar: la tabla completa de `Codigo` de
+`Z_FICA_DEUDA_IC_UNIF`. Conocemos dos por evidencia — `000` (deuda devuelta) y
+`001` (sin deuda), ambos éxito. Cualquier otro código hoy se trata como error
+de negocio. Es un supuesto documentado en `summarize`, no un contrato: agregá
+códigos ahí sólo con una respuesta capturada que los respalde.
 
 ## Estado de los fixtures — leer antes de tocar `test/`
 
 | Origen | Archivos | Estado |
 |---|---|---|
-| **Capturado** — bytes reales de QA | `evidence/spike-*` (faults SOAP y la página de error de SAP) | Datos genuinos del cable. Usados tal cual en `test/envelope.test.ts` y en el caso de detección de fault de `test/parse.test.ts`. |
-| **Reconstruido** — nunca se observó una respuesta exitosa real | `test/zWsSap002.test.ts`, `test/zFicaDeudaIcUnif.test.ts`, y los casos sintéticos de 0/1/3 filas de `test/parse.test.ts` | Armados desde la lista de campos del PDF y el comportamiento de `fast-xml-parser`, **no desde una respuesta exitosa real de SAP**. Prueban nuestra normalización contra nuestra *suposición* del formato. Se cubren las dos variantes posibles (tabla plana y envuelta en `<item>`) precisamente porque no sabemos cuál emite SAP. |
+| **Real, autoritativo** | `test/fixtures/*.response.xml` + `test/live-responses.test.ts` | Respuestas capturadas de QA a HTTP 200. Esto es lo que SAP hace de verdad. |
+| **Contrato** | `test/fixtures/*.wsdl.xml` | Los WSDL de QA. Toda duda de nombre, orden u obligatoriedad se resuelve acá, no en el PDF. |
+| **Sintético** | casos de 0/1/3 filas en `test/parse.test.ts` y los tests por servicio | Cubren formas que el cable no nos mostró (tabla plana vs. envuelta en `<item>`). Se mantienen: SAP emite `<item>`, pero la defensa contra la coerción de arrays tiene que cubrir las dos. |
 
-**Tarea obligatoria cuando se destrabe el bloqueo y `npm run probe` devuelva
-un HTTP 200 con datos:** promover los `evidence/run-*/*.response.xml` reales
-a `test/fixtures/` como fixture autoritativo y volver a correr la suite.
-
-Si el formato real difiere de las dos variantes reconstruidas, los únicos
-archivos que deberían necesitar cambios son `src/services/*.ts` y
-`test/parse.test.ts`. **Si un arreglo obliga a tocar `src/soap/`, la costura
-se filtró** — conviene releer el diseño antes de parchar alrededor.
-
-También queda sin verificar hasta ese primer éxito: la convención de códigos
-de éxito de negocio de SAP. Hoy `classifyBusinessMessage` trata un código
-vacío o todo ceros (`"000"`) como éxito y cualquier otra cosa como error de
-negocio, imprimiéndolo tal cual. Es una suposición documentada, no un
-contrato confirmado.
+**Los fixtures reales están anonimizados.** Los números de documento,
+referencias, códigos de barra y los dígitos dentro del texto de error pasan
+por una permutación fija de 1-9 que **deja el 0 en su lugar** — el cero es
+punto fijo a propósito, porque los ceros a la izquierda son justamente la
+propiedad que esos tests defienden. Largos, decimales y signos se conservan.
+Fechas e importes quedan intactos: no identifican a nadie. Los originales sin
+tocar viven en `evidence/`, que está en `.gitignore`.
 
 ## Nota sobre la trampa de coerción de arrays
 
