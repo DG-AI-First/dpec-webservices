@@ -49,7 +49,6 @@ export interface AppConfig {
   readonly user: string | null;
   readonly password: Secret | null;
   readonly basicAuthCharset: BasicAuthCharset;
-  readonly soapAction: string;
   readonly dryRun: boolean;
   readonly timeoutMs: number;
   readonly evidenceDir: string;
@@ -200,7 +199,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const tls = resolveTls(env, resolvedEnv);
   const { user, password } = resolveCredentials(env, dryRun);
 
-  const soapAction = env.DPEC_SOAP_ACTION ?? '';
   const evidenceDirRaw = trimmed(env, 'DPEC_EVIDENCE_DIR');
   const evidenceDir = evidenceDirRaw === undefined || evidenceDirRaw === '' ? './evidence' : evidenceDirRaw;
 
@@ -213,7 +211,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     user,
     password,
     basicAuthCharset,
-    soapAction,
     dryRun,
     timeoutMs,
     evidenceDir,

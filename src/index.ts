@@ -118,7 +118,11 @@ async function runOperation<TInput, TOutput>(
   }
   const user = config.user;
   const password = config.password.reveal();
-  const soapAction = config.soapAction || op.soapAction;
+  // op.soapAction is authoritative, per-operation — see soap/types.ts. There
+  // is no config-level override: DPEC_SOAP_ACTION was removed because the
+  // two mc-style services need "" and ZZCS_INFO_IC_WS needs its own
+  // non-empty value; a single global override cannot be right for both.
+  const soapAction = op.soapAction;
 
   const requestHeaders = redactHeaders({
     'Content-Type': 'text/xml;charset=UTF-8',

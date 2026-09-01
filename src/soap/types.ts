@@ -44,10 +44,16 @@ export interface ServiceOutcome {
 export interface SoapOperation<TInput, TOutput> {
   readonly serviceName: string; // 'z-ws-sap-002' — slug used in evidence filenames
   readonly operationName: string; // 'ZWsSap002' — SOAP body element name (wire)
-  // 'urn:sap-com:document:sap:soap:functions:mc-style' — the namespace of the
-  // operation ELEMENT. Not 'urn:sap-com:document:sap:rfc:functions', which is
-  // only the schema of scalar TYPES (char10, curr13.2) and is never a body
-  // namespace. Getting these two backwards is an opaque HTTP 500.
+  // The body namespace is whatever the service's OWN WSDL declares as
+  // targetNamespace — there is no single "the" namespace across services.
+  // The two mc-style services (test/fixtures/ws002.wsdl.xml,
+  // test/fixtures/fica.wsdl.xml) both declare
+  // 'urn:sap-com:document:sap:soap:functions:mc-style'. ZZCS_INFO_IC_WS
+  // (test/fixtures/zzcsInfoIcWs.wsdl.xml) declares
+  // 'urn:sap-com:document:sap:rfc:functions' as its ONLY targetNamespace —
+  // that string is not a scalar-type schema that "is never a body
+  // namespace"; it is this service's real one. Getting a service's own
+  // namespace wrong (copying another service's) is an opaque HTTP 500.
   readonly namespace: string;
   readonly endpointPath: string; // '/sap/bc/srt/rfc/sap/z_ws_sap_002/...'
   readonly soapAction: string; // '' by default — see live findings, non-factor

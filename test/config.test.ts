@@ -126,6 +126,19 @@ describe('loadConfig — credential presence', () => {
   });
 });
 
+describe('loadConfig — SOAPAction is per-operation, not a config override', () => {
+  // ZZCS_INFO_IC_WS needs a non-empty SOAPAction while the two mc-style
+  // services need "" — a single global override would be wrong for at
+  // least one of the three. AppConfig.soapAction / DPEC_SOAP_ACTION were
+  // removed so the operation's own SoapOperation.soapAction is always
+  // authoritative (see src/index.ts). This test guards against the field
+  // silently reappearing.
+  it('AppConfig carries no soapAction property, even when DPEC_SOAP_ACTION is set', () => {
+    const config = loadConfig(baseLiveEnv({ DPEC_SOAP_ACTION: 'urn:whatever' }));
+    assert.equal('soapAction' in config, false);
+  });
+});
+
 describe('loadConfig — Secret redaction', () => {
   it('never leaks the password through JSON.stringify or template coercion', () => {
     const config = loadConfig(baseLiveEnv({ SAP_PASSWORD: 'super-secret-value' }));
