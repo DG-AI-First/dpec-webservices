@@ -51,6 +51,8 @@ export interface AppConfig {
   readonly timeoutMs: number;
   readonly evidenceDir: string;
   readonly tls: TlsMode;
+  readonly port: number;
+  readonly serverDeadlineMs: number;
 }
 
 export class ConfigError extends Error {
@@ -137,6 +139,39 @@ function resolveBasicAuthCharset(env: NodeJS.ProcessEnv): BasicAuthCharset {
   );
 }
 
+function resolvePort(env: NodeJS.ProcessEnv): number {
+  const raw = trimmed(env, 'PORT');
+  if (raw === undefined || raw === '') return 3000;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65535) {
+    throw new ConfigError(`PORT must be an integer between 1 and 65535 (got ${JSON.stringify(env.PORT)}).`);
+  }
+  return parsed;
+}
+
+/**
+ * DNI inexistente cuelga ZZCS_INFO_IC_WS sin responder (verificado
+ * 2026-09-01): no hay "no encontrado" del lado de SAP. El server necesita su
+ * propio reloj, más corto que DPEC_TIMEOUT_MS, para poder devolver 504 en vez
+ * de sostener el socket indefinidamente.
+ */
+function resolveServerDeadlineMs(env: NodeJS.ProcessEnv, timeoutMs: number): number {
+  const raw = trimmed(env, 'DPEC_SERVER_DEADLINE_MS');
+  const parsed = raw === undefined || raw === '' ? 15_000 : Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new ConfigError(
+      `DPEC_SERVER_DEADLINE_MS must be a positive integer (got ${JSON.stringify(env.DPEC_SERVER_DEADLINE_MS)}).`,
+    );
+  }
+  if (parsed >= timeoutMs) {
+    throw new ConfigError(
+      `DPEC_SERVER_DEADLINE_MS (${parsed}) must be clearly shorter than DPEC_TIMEOUT_MS (${timeoutMs}) — ` +
+        'otherwise the server cannot answer 504 before the SOAP client itself times out.',
+    );
+  }
+  return parsed;
+}
+
 function resolveTls(env: NodeJS.ProcessEnv, resolvedEnv: Environment): TlsMode {
   const insecureRaw = trimmed(env, 'DPEC_TLS_INSECURE');
   const caFile = trimmed(env, 'DPEC_TLS_CA_FILE');
@@ -196,6 +231,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const basicAuthCharset = resolveBasicAuthCharset(env);
   const tls = resolveTls(env, resolvedEnv);
   const { user, password } = resolveCredentials(env, dryRun);
+  const port = resolvePort(env);
+  const serverDeadlineMs = resolveServerDeadlineMs(env, timeoutMs);
 
   const evidenceDirRaw = trimmed(env, 'DPEC_EVIDENCE_DIR');
   const evidenceDir = evidenceDirRaw === undefined || evidenceDirRaw === '' ? './evidence' : evidenceDirRaw;
@@ -213,5 +250,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     timeoutMs,
     evidenceDir,
     tls,
+    port,
+    serverDeadlineMs,
   });
 }

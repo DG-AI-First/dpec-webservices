@@ -136,6 +136,54 @@ describe('loadConfig — SOAPAction is per-operation, not a config override', ()
   });
 });
 
+describe('loadConfig — PORT (server-only, pero resuelto acá: única lectura de process.env del repo)', () => {
+  it('defaults to 3000 when unset', () => {
+    const config = loadConfig(baseLiveEnv());
+    assert.equal(config.port, 3000);
+  });
+
+  it('accepts a valid custom port', () => {
+    const config = loadConfig(baseLiveEnv({ PORT: '8080' }));
+    assert.equal(config.port, 8080);
+  });
+
+  it('rejects a non-integer PORT', () => {
+    assert.throws(() => loadConfig(baseLiveEnv({ PORT: 'abc' })), ConfigError);
+  });
+
+  it('rejects PORT out of the 1-65535 range', () => {
+    assert.throws(() => loadConfig(baseLiveEnv({ PORT: '70000' })), ConfigError);
+  });
+});
+
+describe('loadConfig — DPEC_SERVER_DEADLINE_MS', () => {
+  // Crítico: ZZCS_INFO_IC_WS cuelga sin responder ante un DNI inexistente en
+  // vez de devolver "no encontrado" (verificado 2026-09-01). El server debe
+  // aplicar su propio deadline, más corto que DPEC_TIMEOUT_MS, y contestar
+  // 504 en vez de sostener el socket.
+  it('defaults to 15000ms, clearly shorter than the 30000ms DPEC_TIMEOUT_MS default', () => {
+    const config = loadConfig(baseLiveEnv());
+    assert.equal(config.serverDeadlineMs, 15_000);
+    assert.ok(config.serverDeadlineMs < config.timeoutMs);
+  });
+
+  it('accepts a valid custom deadline shorter than the SOAP timeout', () => {
+    const config = loadConfig(baseLiveEnv({ DPEC_SERVER_DEADLINE_MS: '5000', DPEC_TIMEOUT_MS: '30000' }));
+    assert.equal(config.serverDeadlineMs, 5_000);
+  });
+
+  it('rejects a non-integer deadline', () => {
+    assert.throws(() => loadConfig(baseLiveEnv({ DPEC_SERVER_DEADLINE_MS: 'abc' })), ConfigError);
+  });
+
+  it('rejects a deadline that is not clearly shorter than DPEC_TIMEOUT_MS', () => {
+    assert.throws(
+      () => loadConfig(baseLiveEnv({ DPEC_SERVER_DEADLINE_MS: '30000', DPEC_TIMEOUT_MS: '30000' })),
+      ConfigError,
+    );
+  });
+});
+
 describe('loadConfig — Secret redaction', () => {
   it('never leaks the password through JSON.stringify or template coercion', () => {
     const config = loadConfig(baseLiveEnv({ SAP_PASSWORD: 'super-secret-value' }));
