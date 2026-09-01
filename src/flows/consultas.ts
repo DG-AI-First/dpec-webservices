@@ -12,11 +12,23 @@
 // Chain verificada en vivo (2026-09-01): DNI 30955882 -> PARTNER 0030002708
 // -> 1 documento de $26.58 (ZFicaDeudaIcUnif).
 
-import type { SoapOperation } from '../soap/types.js';
+import type { ServiceOutcome, SoapOperation } from '../soap/types.js';
 import { UpstreamError } from '../errors.js';
 import { zzcsInfoIcWs, type ZzcsInfoIcWsInput, type OuInfoIcWsRow } from '../services/zzcsInfoIcWs.js';
 import { zFicaDeudaIcUnif, type PoDocumento } from '../services/zFicaDeudaIcUnif.js';
 import { zWsSap002, type TFactRow } from '../services/zWsSap002.js';
+
+/** Mensaje de negocio expuesto por la API. `codigo`/`descripcion` (no `code`/`text` de ServiceOutcome)
+ * para espejar los nombres propios de SAP (`Codigo`/`Descripcion` en `PoMensaje`). */
+export interface ConsultaMensaje {
+  readonly codigo: string;
+  readonly descripcion: string;
+}
+
+/** `summarize()` ya calculó esto; acá sólo se traduce a los nombres de campo de la API. */
+function mapMensajes(businessMessage: ServiceOutcome['businessMessage']): readonly ConsultaMensaje[] {
+  return businessMessage.map((m) => ({ codigo: m.code, descripcion: m.text }));
+}
 
 /** Capacidad inyectada: llama una operación SOAP y devuelve su output ya parseado, o lanza un UpstreamError. */
 export type OperationCaller = <TInput, TOutput>(
@@ -36,7 +48,7 @@ export type ConsultaOutcomeError =
   | { readonly kind: 'error'; readonly error: UpstreamError };
 
 type ZzcsLookup =
-  | { readonly kind: 'ok'; readonly row: OuInfoIcWsRow }
+  | { readonly kind: 'ok'; readonly row: OuInfoIcWsRow; readonly ouResultado: string }
   | ConsultaOutcomeError;
 
 /**
@@ -64,7 +76,7 @@ async function lookupZzcs(call: OperationCaller, dni: string): Promise<ZzcsLooku
   const first = output.rows[0];
   if (!first) return { kind: 'no-encontrado' };
 
-  return { kind: 'ok', row: first };
+  return { kind: 'ok', row: first, ouResultado: output.ouResultado };
 }
 
 type PartnerResolution =
@@ -83,7 +95,12 @@ export type DeudaInput =
 
 export type DeudaOutcome =
   | ConsultaOutcomeError
-  | { readonly kind: 'ok'; readonly partner: string; readonly documentos: readonly PoDocumento[] };
+  | {
+      readonly kind: 'ok';
+      readonly partner: string;
+      readonly mensajes: readonly ConsultaMensaje[];
+      readonly documentos: readonly PoDocumento[];
+    };
 
 /**
  * Deuda: ZZCS_INFO_IC_WS (si `input.kind === 'dni'`) -> ZFicaDeudaIcUnif(piIc=PARTNER).
@@ -120,7 +137,15 @@ export async function consultarDeuda(
     return { kind: 'error-negocio', codigo: first?.code ?? '', mensaje: first?.text ?? '' };
   }
 
-  return { kind: 'ok', partner: resolution.partner, documentos: output.poDocumentos };
+  // "001 No se registra deuda" llega acá (no es un error), y es la razón de
+  // ser de mensajes: un 200 con documentos:[] es una respuesta de SAP, no un
+  // signo de que algo esté roto.
+  return {
+    kind: 'ok',
+    partner: resolution.partner,
+    mensajes: mapMensajes(outcome.businessMessage),
+    documentos: output.poDocumentos,
+  };
 }
 
 export type FacturasInput =
@@ -129,7 +154,12 @@ export type FacturasInput =
 
 export type FacturasOutcome =
   | ConsultaOutcomeError
-  | { readonly kind: 'ok'; readonly partner: string; readonly facturas: readonly TFactRow[] };
+  | {
+      readonly kind: 'ok';
+      readonly partner: string;
+      readonly mensajes: readonly ConsultaMensaje[];
+      readonly facturas: readonly TFactRow[];
+    };
 
 /**
  * Facturas: ZZCS_INFO_IC_WS (si `input.kind === 'dni'`) -> ZWsSap002(iPartner=PARTNER, iAnlage=ANLAGE).
@@ -167,11 +197,19 @@ export async function consultarFacturas(
     return { kind: 'error-negocio', codigo: first?.code ?? '', mensaje: first?.text ?? '' };
   }
 
-  return { kind: 'ok', partner: resolution.partner, facturas: output.tFact };
+  return {
+    kind: 'ok',
+    partner: resolution.partner,
+    mensajes: mapMensajes(outcome.businessMessage),
+    facturas: output.tFact,
+  };
 }
 
 export interface ClienteResumen {
   readonly partner: string;
+  // OU_RESULTADO verbatim: es un código sin texto (ver zzcsInfoIcWs.ts), no
+  // encaja en el shape {codigo, descripcion} de mensajes.
+  readonly resultado: string;
   readonly anlage: string;
   readonly status: string;
   readonly nombre: string;
@@ -191,9 +229,10 @@ export type ClienteOutcome =
  * subconjunto; no lo amplíes sin resolver antes la autenticación (ver
  * README "Lo que la API todavía NO hace").
  */
-function curarCliente(row: OuInfoIcWsRow): ClienteResumen {
+function curarCliente(row: OuInfoIcWsRow, ouResultado: string): ClienteResumen {
   return {
     partner: row.partner,
+    resultado: ouResultado,
     anlage: row.anlage,
     status: row.status,
     nombre: row.name1Text,
@@ -206,5 +245,5 @@ function curarCliente(row: OuInfoIcWsRow): ClienteResumen {
 export async function consultarCliente(call: OperationCaller, dni: string): Promise<ClienteOutcome> {
   const lookup = await lookupZzcs(call, dni);
   if (lookup.kind !== 'ok') return lookup;
-  return { kind: 'ok', cliente: curarCliente(lookup.row) };
+  return { kind: 'ok', cliente: curarCliente(lookup.row, lookup.ouResultado) };
 }

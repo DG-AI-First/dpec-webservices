@@ -66,8 +66,31 @@ describe('consultarDeuda', () => {
     assert.equal(outcome.kind, 'ok');
     assert.ok(outcome.kind === 'ok');
     assert.equal(outcome.partner, '0030002708');
+    assert.deepEqual(outcome.mensajes, [], 'sin PoMensaje -> array vacío, no undefined');
     assert.equal(outcome.documentos.length, 1);
     assert.equal(outcome.documentos[0]?.betrw, '26.58');
+  });
+
+  it('PoMensaje con múltiples entradas -> mensajes verbatim y en orden (el PDF de DPEC muestra dos)', async () => {
+    const ficaOutput: ZFicaDeudaIcUnifOutput = {
+      poDocumentos: [],
+      poMensaje: [
+        { codigo: '001', descripcion: 'No se registra deuda' },
+        { codigo: '000', descripcion: 'Estado de deuda devuelto correctamente' },
+      ],
+    };
+    const call = fakeCaller({
+      [zzcsInfoIcWs.operationName]: { output: ZZCS_OK },
+      [zFicaDeudaIcUnif.operationName]: { output: ficaOutput },
+    });
+
+    const outcome = await consultarDeuda(call, { kind: 'dni', dni: '30955882' });
+    assert.equal(outcome.kind, 'ok', 'ninguno de los dos códigos es un error de negocio');
+    assert.ok(outcome.kind === 'ok');
+    assert.deepEqual(outcome.mensajes, [
+      { codigo: '001', descripcion: 'No se registra deuda' },
+      { codigo: '000', descripcion: 'Estado de deuda devuelto correctamente' },
+    ]);
   });
 
   it('DNI sin filas (OU_RESULTADO="0", 0 rows) -> no-encontrado, sin llamar a FICA', async () => {
@@ -189,8 +212,22 @@ describe('consultarFacturas', () => {
     assert.equal(outcome.kind, 'ok');
     assert.ok(outcome.kind === 'ok');
     assert.equal(outcome.partner, '0030002708');
+    assert.deepEqual(outcome.mensajes, [{ codigo: '000', descripcion: '' }], 'EMsgnro no vacío -> un solo mensaje');
     assert.equal(outcome.facturas.length, 1);
     assert.deepEqual(capturedInput, { iPartner: '0030002708', iAnlage: '0060002445', iCantfact: '10' });
+  });
+
+  it('EMsgnro y EMsgtxt vacíos -> mensajes es un array vacío, no undefined', async () => {
+    const wsOutput: ZWsSap002Output = { eMsgnro: '', eMsgtxt: '', tFact: [] };
+    const call = fakeCaller({
+      [zzcsInfoIcWs.operationName]: { output: ZZCS_OK },
+      [zWsSap002.operationName]: { output: wsOutput },
+    });
+
+    const outcome = await consultarFacturas(call, { kind: 'dni', dni: '30955882' });
+    assert.equal(outcome.kind, 'ok');
+    assert.ok(outcome.kind === 'ok');
+    assert.deepEqual(outcome.mensajes, []);
   });
 
   it('DNI sin filas -> no-encontrado, sin llamar a ZWsSap002', async () => {
@@ -296,6 +333,7 @@ describe('consultarCliente', () => {
     assert.ok(outcome.kind === 'ok');
     assert.deepEqual(outcome.cliente, {
       partner: '0030002708',
+      resultado: '0',
       anlage: '0060002445',
       status: 'ACTIVO',
       nombre: 'Juan Perez',
