@@ -4,14 +4,10 @@ import { ParseError } from '../src/errors.js';
 import { parseXml, toArray, findFault, unwrapBody } from '../src/soap/parser.js';
 
 // ---------------------------------------------------------------------------
-// toArray — the array-coercion trap (design §3(C)). This is the single most
-// likely silent bug in this codebase: XML collapses a repeated element to a
-// scalar when there's exactly one occurrence, and (as discovered empirically
-// while writing this suite) fast-xml-parser's `isArray` allowlist coerces a
-// SELF-CLOSED table element into a ONE-ELEMENT array containing an empty
-// string/object sentinel — NOT an empty array. toArray must flatten both
-// the sentinel case AND the item-wrapped case, whether or not the value
-// already arrived as an array.
+// toArray: la trampa de coerción de arrays. fast-xml-parser colapsa un
+// elemento repetido a escalar si aparece una sola vez, y coerciona un
+// elemento auto-cerrado en el allowlist isArray a [''] en vez de [].
+// Detalle: docs/hallazgos-tecnicos.md#la-trampa-de-coercion-de-arrays-array-coercion-trap
 // ---------------------------------------------------------------------------
 describe('toArray — direct unit cases', () => {
   it('undefined -> []', () => {
@@ -53,17 +49,15 @@ describe('toArray — direct unit cases', () => {
   });
 
   it('item-wrapped-inside-array ([{item: [...]}]) unwraps to the inner rows (the real SAP shape)', () => {
-    // This is the actual shape fast-xml-parser produces for a single
-    // <TFact><item>...</item><item>...</item></TFact> container when
-    // 'TFact' is itself in the isArray allowlist.
+    // Forma real que produce fast-xml-parser para un único
+    // <TFact><item>...</item>...</TFact> cuando TFact está en el allowlist isArray.
     const wrapped = [{ item: [{ Opbel: '1' }, { Opbel: '2' }] }];
     assert.deepEqual(toArray(wrapped), [{ Opbel: '1' }, { Opbel: '2' }]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// End-to-end through the real XMLParser instance, exercising the isArray
-// allowlist + toArray together — this is what actually runs in production.
+// End-to-end con la instancia real de XMLParser: lo que corre en producción.
 // ---------------------------------------------------------------------------
 describe('toArray — integration through parseXml (real fast-xml-parser output)', () => {
   function tFactRows(xml: string): unknown[] {
@@ -118,9 +112,8 @@ describe('toArray — integration through parseXml (real fast-xml-parser output)
 });
 
 // ---------------------------------------------------------------------------
-// Namespace resilience — removeNSPrefix must make n0:, SOAP-ENV:, and bare
-// envelopes parse identically. Also: leading zeros and decimal strings must
-// survive untouched (parseTagValue: false).
+// removeNSPrefix debe dar el mismo resultado con n0:, SOAP-ENV: y sin
+// prefijo. Ceros a la izquierda y decimales deben sobrevivir intactos.
 // ---------------------------------------------------------------------------
 describe('namespace and value-fidelity resilience', () => {
   const bodyFor = (prefix: string, close = prefix) => `
@@ -162,13 +155,12 @@ describe('namespace and value-fidelity resilience', () => {
 });
 
 // ---------------------------------------------------------------------------
-// SOAP Fault detection — both prefixes, and the REAL captured fault from QA
-// (genuine wire data, HTTP 500). This confirms the HTTP-500-carries-a-fault
-// ordering requirement is real, not theoretical.
+// Detección de Fault SOAP, con el fault real capturado en QA (HTTP 500) que
+// confirma que el orden fault-antes-que-status no es teórico.
 // ---------------------------------------------------------------------------
 describe('findFault', () => {
   it('detects a fault under the real captured soap-env: prefix (genuine QA wire data)', () => {
-    // Verbatim from the live QA fault (facturas + deuda spikes, both identical).
+    // Verbatim del fault real de QA (spikes de facturas y deuda, idéntico).
     const raw =
       '<soap-env:Envelope xmlns:soap-env="http://schemas.xmlsoap.org/soap/envelope/">' +
       '<soap-env:Header/><soap-env:Body><soap-env:Fault>' +
@@ -202,7 +194,7 @@ describe('findFault', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Malformed / non-XML / non-SOAP bodies must never crash uncaught.
+// Cuerpos malformados/no-XML/no-SOAP nunca deben crashear sin control.
 // ---------------------------------------------------------------------------
 describe('malformed and non-SOAP bodies', () => {
   it('plain text (not XML at all) -> ParseError', () => {
@@ -218,19 +210,19 @@ describe('malformed and non-SOAP bodies', () => {
   });
 
   it('well-formed but non-SOAP XML (SAP proprietary <error> on HTTP 200) parses, but unwrapBody rejects it', () => {
-    // Real shape observed on a `?wsdl` GET: HTTP 200 with this body. A client
-    // checking only the status code would call this success.
+    // Forma real observada en un GET ?wsdl: HTTP 200 con este body. Un
+    // cliente que sólo mira el status lo tomaría como éxito.
     const raw =
       '<error><user>WSMICTS</user><errorText>WSP Exception caught: something</errorText>' +
       '<bindingKey>x</bindingKey></error>';
-    const node = parseXml(raw); // well-formed XML, does not throw here
-    assert.equal(findFault(node), null); // no SOAP Fault either
+    const node = parseXml(raw); // XML bien formado, no tira acá
+    assert.equal(findFault(node), null); // tampoco hay Fault SOAP
     assert.throws(() => unwrapBody(node, 'ZWsSap002'), ParseError);
   });
 });
 
 // ---------------------------------------------------------------------------
-// unwrapBody — response element name resilience.
+// unwrapBody: resiliencia del nombre del elemento de respuesta.
 // ---------------------------------------------------------------------------
 describe('unwrapBody', () => {
   it('finds the exact ${operationName}Response element', () => {

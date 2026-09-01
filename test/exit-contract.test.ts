@@ -1,17 +1,7 @@
-// The exit-code contract is this deliverable's core value: it answers WHICH SIDE
-// the problem is on. A process that crashes on the way out destroys that answer
-// no matter how correctly it classified the error internally.
-//
-// Observed on win32 against the live QA endpoint: calling process.exit() while
-// undici still had sockets closing produced
-//   Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), src\win\async.c:94
-// and the process exited 127 instead of the computed 3. A CI reading 127 cannot
-// distinguish "DPEC returned a fault" from "our script blew up".
-//
-// Two layers of cover:
-//  - closeTransport() against a real local server: exercises the actual socket
-//    teardown path without depending on DPEC or the network.
-//  - a spawned dry run: guards the end-to-end exit contract on the no-network path.
+// El exit code es el valor central de esta herramienta: dice de qué lado
+// está el problema. win32 real: process.exit() con sockets undici abiertos
+// tira "Assertion failed: ...UV_HANDLE_CLOSING" y sale 127 en vez del código
+// calculado — un CI no puede distinguir "DPEC falló" de "esto se rompió".
 
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -27,7 +17,7 @@ const FAULT_BODY =
 function startStub(): Promise<{ server: Server; url: string }> {
   return new Promise((resolve) => {
     const server = createServer((_req, res) => {
-      // Mirrors the real DPEC behaviour: SOAP 1.1 faults ride on HTTP 500.
+      // Refleja el comportamiento real de DPEC: los faults SOAP 1.1 viajan en HTTP 500.
       res.writeHead(500, { 'Content-Type': 'text/xml' });
       res.end(FAULT_BODY);
     });
@@ -52,8 +42,8 @@ describe('transport teardown', () => {
   test('closeTransport leaves no socket behind after a real call', async () => {
     stub = await startStub();
 
-    // Baseline taken with the stub already listening, so its own listener and
-    // inbound connection are not mistaken for a client-side leak.
+    // Baseline tomado con el stub ya escuchando, para no confundir su propio
+    // listener/conexión entrante con una fuga del lado cliente.
     const before = socketCount();
 
     const result = await callSoap({
@@ -68,13 +58,13 @@ describe('transport teardown', () => {
 
     await closeTransport();
 
-    // Shut the stub down too, so only genuinely leaked handles remain.
+    // Apaga el stub también, para que sólo queden handles realmente filtrados.
     stub.server.closeAllConnections();
     await new Promise<void>((resolve) => stub!.server.close(() => resolve()));
     stub = null;
 
-    // libuv frees handles asynchronously, so a count taken the instant after
-    // close() still shows them. Poll: a real leak never comes back down.
+    // libuv libera handles de forma asíncrona: un conteo tomado justo después
+    // de close() todavía los muestra. Sondear: una fuga real nunca vuelve a bajar.
     const deadline = Date.now() + 2_000;
     while (socketCount() > before && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 25));
@@ -97,7 +87,7 @@ describe('process exit contract', () => {
   function runDry() {
     return spawnSync(process.execPath, ['--import', 'tsx', 'scripts/dry-run.mjs'], {
       encoding: 'utf8',
-      // Deliberately no credentials: a dry run must work without them.
+      // Deliberadamente sin credenciales: un dry run debe andar sin ellas.
       env: { ...process.env, SAP_USER: '', SAP_PASSWORD: '' },
       timeout: 60_000,
     });

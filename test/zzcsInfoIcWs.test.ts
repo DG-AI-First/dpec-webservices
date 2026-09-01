@@ -1,23 +1,8 @@
-// Unit tests for src/services/zzcsInfoIcWs.ts — see design §1 (services/
-// know nothing about fetch/TLS/files/console; buildFields/parseResult/
-// summarize are pure functions, 100% unit-testable with zero mocking).
-//
-// Every wire name below comes straight from the real QA WSDL fetched today,
-// test/fixtures/zzcsInfoIcWs.wsdl.xml — NOT reconstructed from any doc. This
-// repo was burned once by reconstructing wire names from a .NET-generated
-// PDF (see zWsSap002.ts's header and README's finding #5); this service's
-// names are UPPER_SNAKE (IN_NUMERO, OU_INFO_IC_WS), a different dialect from
-// the two mc-style services' PascalCase, and that is exactly why
-// assertWireName had to be widened rather than reused as-is.
-//
-//   ZZCS_INFO_IC_WS         :: IN_NUMERO, IN_PARTNER, IN_TEST, IN_TIPO
-//   ZZCS_INFO_IC_WSResponse :: OU_INFO_IC_WS, OU_RESULTADO
-//   ZZTTCS_INFO_IC_WS       :: item (table of ZZTCS_INFO_IC_WS, always item-wrapped)
-//   ZZTCS_INFO_IC_WS        :: 37 fields, PARTNER..DESCRIPCION (see src file for the full list)
-//
-// Unlike the two mc-style services, this WSDL's targetNamespace is
-// 'urn:sap-com:document:sap:rfc:functions' and its soapAction is
-// non-empty — both handled by src/soap/types.ts and src/index.ts, not here.
+// Tests unitarios de src/services/zzcsInfoIcWs.ts.
+// Nombres de campo desde el WSDL real (test/fixtures/zzcsInfoIcWs.wsdl.xml),
+// UPPER_SNAKE en vez de PascalCase — ver
+// docs/hallazgos-tecnicos.md#convencion-de-nombres-de-campo-en-el-cable
+// Namespace y soapAction propios, distintos de mc-style — ver soap/types.ts.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -83,9 +68,9 @@ describe('zzcsInfoIcWs.parseResult — UPPER_SNAKE wire names, row counts', () =
   });
 
   it('a genuinely single-row table (no repetition) still comes out as an array of length 1', () => {
-    // This is the case design §3(C) calls "the single most likely silent
-    // bug": fast-xml-parser collapses a lone <item> into a bare object
-    // unless isArray forces it, and toArray() is the mapper-level defense.
+    // El caso que más falla en silencio: fast-xml-parser colapsa un <item>
+    // único a objeto plano salvo que isArray lo fuerce; toArray() es la
+    // defensa a nivel de mapper.
     const out = parse(`<OU_INFO_IC_WS>${row('7')}</OU_INFO_IC_WS><OU_RESULTADO>0</OU_RESULTADO>`);
     assert.ok(Array.isArray(out.rows));
     assert.equal(out.rows.length, 1);
@@ -108,22 +93,12 @@ describe('zzcsInfoIcWs.parseResult — UPPER_SNAKE wire names, row counts', () =
 });
 
 describe('zzcsInfoIcWs.summarize', () => {
-  // OU_RESULTADO's code table is UNKNOWN — there is no WSDL enumeration and
-  // no DPEC documentation for it. Two values have been observed live against
-  // QA, and only two:
-  //   "0"  — DNI 30955882 -> PARTNER 0030002708, ANLAGE 0060002445, STATUS
-  //          DESCONECTADO, one populated row (2026-08-28; see
-  //          test/fixtures/zzcsInfoIcWs.response.xml and live-responses.test.ts)
-  //   "99" — IN_NUMERO empty, zero rows, HTTP 200 (2026-09-01)
-  // Per the NO_DEBT_CODE precedent in zFicaDeudaIcUnif.ts, "0" is treated as
-  // success because it co-occurred with a genuinely successful lookup; every
-  // other value is unknown and reported as a business error rather than
-  // assumed to be a specific failure.
+  // OU_RESULTADO: sólo "0" (éxito, 2026-08-28) y "99" (0 filas, HTTP 200,
+  // 2026-09-01) fueron observados; el resto de la tabla es desconocido — ver
+  // zzcsInfoIcWs.ts.
   //
-  // A third case has no code at all: a well-formed but NON-EXISTENT DNI
-  // (99999999) never answers — the RFC runs past the 30s client timeout
-  // (2026-09-01). "Not found" is therefore not a response this service gives,
-  // it is a hang. Any caller with a request deadline must plan for that.
+  // DNI inexistente no responde: cuelga hasta el timeout de 30s en vez de
+  // devolver "no encontrado". Verificado 2026-09-01.
 
   it('OU_RESULTADO "0" with a populated row is PASS (the only observed value)', () => {
     const outcome = summarize({
@@ -153,9 +128,8 @@ describe('zzcsInfoIcWs.summarize', () => {
   });
 
   it('OU_RESULTADO "99" with zero rows is FAIL — the second value observed live', () => {
-    // Captured 2026-09-01 by sending IN_NUMERO empty: HTTP 200, no rows, "99".
-    // This is the value that proves the service reports refusal in-band rather
-    // than by SOAP fault, so a 200 must never be read as success on its own.
+    // Capturado 2026-09-01 con IN_NUMERO vacío: HTTP 200, sin filas, "99".
+    // Prueba que el servicio informa rechazo in-band: un 200 no es éxito por sí solo.
     const outcome = summarize({ ouResultado: '99', rows: [] });
     assert.equal(outcome.verdict, 'FAIL');
     assert.equal(outcome.recordCount, 0);

@@ -1,28 +1,9 @@
-// Authoritative fixtures: four real QA responses, captured at HTTP 200 —
-// three via `npm run probe` on 2026-08-28, plus the ZZCS_INFO_IC_WS response
-// captured 2026-09-01 with a dedicated throwaway script (deleted after use,
-// never committed) built from this repo's own buildEnvelope/callSoap.
-// Everything else in this suite tests our assumptions; this file tests
-// SAP's actual behaviour.
+// Fixtures reales de QA (HTTP 200): 3 del 2026-08-28, ZZCS_INFO_IC_WS del
+// 2026-09-01. Único archivo que testea el comportamiento real de SAP, no
+// nuestras suposiciones.
 //
-// PRIVACY: document numbers, invoice references, barcodes and the digits
-// inside the error text are digit-scrambled through a fixed permutation of
-// 1-9 that maps 0 to 0. Zero is deliberately a fixed point: leading zeros
-// are the property these tests exist to defend, so a scramble that moved
-// them would quietly delete the assertion's subject. Lengths, decimal
-// places and signs are preserved for the same reason. Dates and amounts are
-// untouched (they identify no one). The unmodified originals stay in
-// evidence/, which is gitignored.
-//
-// ZZCS_INFO_IC_WS's response additionally carries a real customer's name and
-// home address (NAME1_TEXT, STREET_IC/IN, HOUSE_NUM1_IC/IN, CITY1_IC/IN,
-// POST_CODE1_IC/IN) — fields the two mc-style services never return. Those
-// are REDACTED outright (`[REDACTED ...]`), not scrambled: a name or street
-// has no "leading zeros" property worth preserving, and scrambling letters
-// would not remove the identifying value the way it does for a digit string.
-// PARTNER, ANLAGE, IDNUMBER_DNI and ABLEINH still follow the digit-scramble
-// rule above, since their string-fidelity (leading zeros, length) is exactly
-// what these tests exist to defend.
+// Privacidad: dígitos permutados (permutación fija 1-9, 0 fijo, para no
+// destruir ceros a la izquierda). Detalle: docs/hallazgos-tecnicos.md#privacidad-de-los-fixtures
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';

@@ -34,7 +34,7 @@ describe('classifyHttpStatus', () => {
 
 describe('SoapFaultError — HTTP 500 carries a fault, not a transport failure', () => {
   it('is exit code 3, kind soap-fault, even though it rides on HTTP 500', () => {
-    // Real captured fault from QA (soap-env: prefix, genuine wire data).
+    // Fault real capturado en QA (prefijo soap-env:, dato de cable genuino).
     const err = new SoapFaultError(
       'soap-env:Server',
       'Error en el tratamiento de servicio web; Más detalles en log de error de servicio web en la página de proveedor',

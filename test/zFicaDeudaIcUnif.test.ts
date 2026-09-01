@@ -1,15 +1,6 @@
-// Unit tests for src/services/zFicaDeudaIcUnif.ts — see design §1.
-//
-// Wire names come from the QA WSDL (test/fixtures/fica.wsdl.xml):
-//   ZficasDetDeudaCte  :: Budat, Faedn, Xblnr, Ltext, Betrw, TotalAmnt, CodBarraVisual
-//   ZficasMessDeudaCte :: Codigo, Descripcion
-// Both tables are TableOf... :: item, so rows always arrive item-wrapped.
-//
-// Unlike ZWsSap002, this operation's INPUT element carries the output tables
-// (PoDocumentos, PoMensaje) in its sequence with no minOccurs="0". Omitting
-// them is an HTTP 500 at 145ms — verified live against QA.
-//
-// The no-debt fixture is REAL: captured from QA at HTTP 200 on 2026-08-28.
+// Tests unitarios de src/services/zFicaDeudaIcUnif.ts.
+// Nombres de campo desde el WSDL real (test/fixtures/fica.wsdl.xml). El
+// fixture no-debt es real: capturado en QA a HTTP 200 el 2026-08-28.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -31,7 +22,7 @@ describe('zFicaDeudaIcUnif.buildFields', () => {
   });
 
   it('also emits empty PoDocumentos and PoMensaje — mandatory in the request element', () => {
-    // Verified live: without these two, QA answers HTTP 500 in 145ms.
+    // Verificado en vivo: sin estos dos, QA responde HTTP 500 en 145ms.
     assert.deepEqual(buildFields(INPUT).slice(5), [
       { name: 'PoDocumentos', value: '' },
       { name: 'PoMensaje', value: '' },

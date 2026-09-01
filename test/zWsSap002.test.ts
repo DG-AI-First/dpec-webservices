@@ -1,20 +1,12 @@
-// Unit tests for src/services/zWsSap002.ts — see design §1 (services/ know
-// nothing about fetch/TLS/files/console, so parseResult/summarize are pure
-// functions, 100% unit-testable with zero mocking).
+// Tests unitarios de src/services/zWsSap002.ts.
+// Nombres de campo desde el WSDL real (test/fixtures/ws002.wsdl.xml).
+// removeNSPrefix no cambia mayúsculas: leer tFact cuando el cable dice TFact
+// da undefined, que toArray() convierte en un vacío plausible — el bug
+// silencioso que estos nombres existen para prevenir.
 //
-// Wire names below come from the QA WSDL, promoted to test/fixtures/ws002.wsdl.xml.
-// They are PascalCase, and `removeNSPrefix` does NOT change case — reading
-// `responseNode.tFact` when the wire says `TFact` yields undefined, which
-// toArray() turns into a perfectly plausible empty result. That silent
-// wrong answer is exactly what these names exist to prevent.
-//
-// The row type is ZsficaFacturas :: Opbel, Exbel, Faedn, TotalAmnt. There is
-// no EAnlage — an earlier reconstruction from DPEC's PDF invented one.
-//
-// HONEST CONSTRAINT: still no real successful ZWsSap002 response. With empty
-// IAnlage/IPartner the RFC runs past DPEC's 60s nginx timeout (HTTP 504), so
-// exercising it needs QA test data from DPEC. Promote a real response here
-// the moment one arrives.
+// Sin respuesta real exitosa todavía: con IAnlage/IPartner vacíos el RFC
+// pasa el timeout nginx de 60s de DPEC (HTTP 504). Promover un caso real acá
+// en cuanto llegue.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';

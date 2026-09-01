@@ -7,10 +7,8 @@ const NAMESPACE = 'urn:sap-com:document:sap:soap:functions:mc-style';
 
 describe('buildEnvelope — exact-string match against the WSDL contract (live-verified HTTP 200)', () => {
   it('produces the ZWsSap002 envelope byte-for-byte as captured against QA', () => {
-    // Shape taken from the QA WSDL (test/fixtures/ws002.wsdl.xml): the body
-    // element is qualified in the mc-style namespace, and because the schema
-    // declares no elementFormDefault (= unqualified), its children are bare.
-    // Sending them prefixed produced HTTP 500 for months — see README.
+    // Forma real del WSDL (test/fixtures/ws002.wsdl.xml): hijos del body sin
+    // prefijo de namespace — ver soap/envelope.ts.
     const expected = `<?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:sap-com:document:sap:soap:functions:mc-style">
   <soapenv:Header/>
@@ -38,10 +36,9 @@ describe('buildEnvelope — exact-string match against the WSDL contract (live-v
   });
 
   it('produces the ZFicaDeudaIcUnif envelope byte-for-byte as captured against QA', () => {
-    // Shape taken from the QA WSDL (test/fixtures/fica.wsdl.xml). Empty
-    // fields render as open+close tags, never self-closed. PoDocumentos and
-    // PoMensaje belong in the REQUEST too: mc-style puts the RFC's output
-    // tables in the input element's sequence without minOccurs="0".
+    // Forma real del WSDL (test/fixtures/fica.wsdl.xml). Campos vacíos se
+    // serializan abiertos+cerrados, nunca auto-cerrados. PoDocumentos y
+    // PoMensaje van también en el REQUEST — ver zFicaDeudaIcUnif.ts.
     const expected = `<?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:sap-com:document:sap:soap:functions:mc-style">
   <soapenv:Header/>
@@ -118,13 +115,9 @@ describe('assertWireName — the .NET-proxy-artifact guard', () => {
 });
 
 describe('assertWireName — widened for ZZCS_INFO_IC_WS UPPER_SNAKE wire names', () => {
-  // ZZCS_INFO_IC_WS's WSDL (test/fixtures/zzcsInfoIcWs.wsdl.xml) declares
-  // IN_NUMERO, IN_PARTNER, OU_INFO_IC_WS, etc. — SAP's ABAP RFC parameter
-  // names verbatim, unlike the mc-style services which get PascalCase from
-  // the RFC-to-SOAP generator. Both are legitimate wire formats depending on
-  // which generator produced the WSDL; the guard must accept both while
-  // still rejecting the .NET-proxy artifacts and malformed underscore usage
-  // that indicate a transcription bug rather than a real naming convention.
+  // ZZCS_INFO_IC_WS usa UPPER_SNAKE (ver zzcsInfoIcWs.wsdl.xml); los mc-style
+  // usan PascalCase. El guard acepta ambos dialectos legítimos y sigue
+  // rechazando el sufijo .NET y los guiones bajos mal puestos.
 
   it('still accepts PascalCase names (mc-style services)', () => {
     assert.doesNotThrow(() => assertWireName('PiIc'));
