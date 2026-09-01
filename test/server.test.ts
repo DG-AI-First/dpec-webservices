@@ -21,16 +21,23 @@ interface ErrorBody {
 interface HealthBody {
   readonly status: string;
 }
+interface Mensaje {
+  readonly codigo: string;
+  readonly descripcion: string;
+}
 interface DeudaOkBody {
   readonly partner: string;
+  readonly mensajes: readonly Mensaje[];
   readonly documentos: ReadonlyArray<{ readonly betrw: string }>;
 }
 interface FacturasOkBody {
   readonly partner: string;
+  readonly mensajes: readonly Mensaje[];
   readonly facturas: readonly unknown[];
 }
 interface ClienteOkBody {
   readonly partner: string;
+  readonly resultado: string;
   readonly anlage: string;
   readonly status: string;
   readonly nombre: string;
@@ -183,6 +190,7 @@ describe('GET /api/deuda', () => {
       assert.equal(res.status, 200);
       const body = await readJson<DeudaOkBody>(res);
       assert.equal(body.partner, '0030002708');
+      assert.deepEqual(body.mensajes, [], 'stub sin PoMensaje -> array vacío, no ausente');
       assert.equal(body.documentos.length, 1);
       assert.equal(body.documentos[0]?.betrw, '26.58');
     });
@@ -272,6 +280,7 @@ describe('GET /api/facturas', () => {
       assert.equal(res.status, 200);
       const body = await readJson<FacturasOkBody>(res);
       assert.equal(body.partner, '0030002708');
+      assert.deepEqual(body.mensajes, [{ codigo: '000', descripcion: 'OK' }], 'EMsgnro/EMsgtxt del stub -> un mensaje');
       assert.equal(body.facturas.length, 1);
     });
   });
@@ -322,8 +331,17 @@ describe('GET /api/cliente', () => {
       assert.equal(res.status, 200);
       const body = await readJson<ClienteOkBody & Record<string, unknown>>(res);
       assert.equal(body.partner, '0030002708');
+      assert.equal(body.resultado, '0');
       assert.equal(body.anlage, '0060002445');
-      assert.deepEqual(Object.keys(body).sort(), ['anlage', 'deuda', 'factAdeudadas', 'nombre', 'partner', 'status']);
+      assert.deepEqual(Object.keys(body).sort(), [
+        'anlage',
+        'deuda',
+        'factAdeudadas',
+        'nombre',
+        'partner',
+        'resultado',
+        'status',
+      ]);
     });
   });
 

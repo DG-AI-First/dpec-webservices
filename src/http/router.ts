@@ -86,7 +86,7 @@ async function handleDeuda(res: ServerResponse, deps: RouterDeps, url: URL): Pro
     deps.deadlineMs,
   );
   if (outcome.kind === 'ok') {
-    return sendJson(res, 200, { partner: outcome.partner, documentos: outcome.documentos });
+    return sendJson(res, 200, { partner: outcome.partner, mensajes: outcome.mensajes, documentos: outcome.documentos });
   }
   const mapped = mapOutcomeToHttpError(outcome);
   return sendJson(res, mapped.status, mapped.body);
@@ -103,7 +103,7 @@ async function handleFacturas(res: ServerResponse, deps: RouterDeps, url: URL): 
     deps.deadlineMs,
   );
   if (outcome.kind === 'ok') {
-    return sendJson(res, 200, { partner: outcome.partner, facturas: outcome.facturas });
+    return sendJson(res, 200, { partner: outcome.partner, mensajes: outcome.mensajes, facturas: outcome.facturas });
   }
   const mapped = mapOutcomeToHttpError(outcome);
   return sendJson(res, mapped.status, mapped.body);
