@@ -31,13 +31,62 @@ del repo que lee `process.env`.
 
 ## La API
 
-Tres endpoints. Todo devuelve JSON.
+Cuatro endpoints. Todo devuelve JSON.
 
 | Método | Ruta | Qué hace |
 |---|---|---|
 | `GET` | `/health` | Responde `{"status":"ok"}`. No toca SAP. |
-| `GET` | `/api/deuda?dni=<n>` | Facturas **impagas** de esa persona. |
-| `GET` | `/api/facturas?dni=<n>` | Últimas N facturas, incluidas pagadas y notas de crédito. |
+| `GET` | `/api/cliente?dni=<n>` | A qué `PARTNER`/`ANLAGE` resuelve un DNI (sin encadenar deuda/facturas). |
+| `GET` | `/api/deuda?dni=<n>` **o** `?partner=<n>` | Facturas **impagas** de esa persona. |
+| `GET` | `/api/facturas?dni=<n>` **o** `?partner=<n>&anlage=<n>` | Últimas N facturas, incluidas pagadas y notas de crédito. |
+
+`/api/deuda` y `/api/facturas` aceptan el DNI (resuelve `PARTNER`/`ANLAGE` por
+vos) **o** el identificador SAP directo, salteando esa resolución. Sirve para
+reproducir los casos de prueba del PDF de integración de DPEC, que vienen
+dados por `PARTNER`/`ANLAGE`, no por DNI. Nunca mandes los dos a la vez.
+
+| Parámetro | Dónde | Qué es |
+|---|---|---|
+| `dni` | `/api/cliente`, `/api/deuda`, `/api/facturas` | El DNI de la persona. Dispara la resolución `ZZCS_INFO_IC_WS`. |
+| `partner` | `/api/deuda`, `/api/facturas` | El `PARTNER` de SAP, directo. Alternativa a `dni`. |
+| `anlage` | `/api/facturas` | El `ANLAGE` de SAP. Obligatorio junto con `partner` en `/api/facturas`; no aplica a `/api/deuda`. |
+| `max` | `/api/deuda`, `/api/facturas` | Cuántos registros pedir (`PiNumMax` / `ICantfact`). Entero positivo, default `10`. |
+
+`partner` y `anlage` son claves de SAP con ceros a la izquierda
+significativos: viajan como string de punta a punta, nunca se parsean a
+`number` ni se les toca un solo carácter. Cuando lo mandás directo, la
+respuesta lo devuelve igual en el campo `partner`, para que el shape de
+`/api/deuda` y `/api/facturas` sea siempre el mismo, vengas por `dni` o por
+`partner`.
+
+Validaciones (todas devuelven `400`):
+
+| Situación | `codigo` |
+|---|---|
+| Ni `dni` ni `partner` | `PARAMETROS_INVALIDOS` |
+| `dni` y `partner` juntos (ambiguo, no se prioriza ninguno) | `PARAMETROS_INVALIDOS` |
+| `dni` presente pero vacío o no numérico | `DNI_INVALIDO` |
+| `/api/facturas` con `partner` pero sin `anlage` (o viceversa) | `PARAMETROS_INVALIDOS` |
+| `partner`/`anlage` presentes pero vacíos o no numéricos | `PARAMETROS_INVALIDOS` |
+| `max` presente pero no es un entero positivo | `PARAMETROS_INVALIDOS` |
+
+Respuesta exitosa de `/api/cliente`:
+
+```json
+{
+  "partner": "0030002708",
+  "anlage": "0060002445",
+  "status": "...",
+  "nombre": "...",
+  "factAdeudadas": "...",
+  "deuda": "..."
+}
+```
+
+Es un subconjunto curado a propósito: la fila real de `ZZCS_INFO_IC_WS` trae
+37 campos con domicilio, email y dos teléfonos. Esta API no tiene
+autenticación y los DNI son secuenciales — devolver la fila completa la
+convertiría en un buscador de personas. Ver "Lo que la API todavía NO hace".
 
 Respuesta exitosa de `/api/deuda`:
 
@@ -71,7 +120,8 @@ Siempre con la misma forma: `{"error": {"codigo": "...", "mensaje": "..."}}`.
 
 | Status | `codigo` | Cuándo |
 |---|---|---|
-| `400` | `DNI_INVALIDO` | Falta el parámetro `dni`, está vacío o no es numérico. |
+| `400` | `DNI_INVALIDO` | Se mandó `dni` y está vacío o no es numérico. |
+| `400` | `PARAMETROS_INVALIDOS` | Falta `dni`/`partner`, se mandaron los dos, falta `anlage` junto a `partner` en `/api/facturas`, `partner`/`anlage` no numéricos, o `max` no es un entero positivo. |
 | `404` | `NO_ENCONTRADO` | SAP respondió, pero ese DNI no resolvió a ningún cliente. |
 | `404` | `RUTA_NO_ENCONTRADA` | La ruta no existe. |
 | `409` | el código de SAP, verbatim | Error de negocio. Ej: `E9011` cuando el cliente está desconectado. El `mensaje` es el texto que mandó SAP. |
@@ -108,7 +158,7 @@ Tres niveles, de más barato a más convincente.
 
 ```bash
 npm run check   # tsc --noEmit
-npm test        # 169 tests
+npm test        # 209 tests
 npm start       # y después el curl de arriba, contra QA de verdad
 ```
 
@@ -268,10 +318,39 @@ autenticación de clientes.
 
 ## Datos de prueba
 
-El único DNI de prueba conocido es **30955882**, que resuelve a
-`PARTNER 0030002708` / `ANLAGE 0060002445` y tiene una factura impaga de
-$26,58. Es un cliente **desconectado desde 2012**, así que sirve para
-`/api/deuda` pero no para `/api/facturas`.
+### Probar capa por capa
+
+`/api/cliente`, `/api/deuda` y `/api/facturas` son tres servicios SAP
+distintos (ver "Los tres servicios SAP", arriba). Esta progresión los prueba
+uno por uno, para ver el encadenamiento en cámara lenta en vez de como una
+caja negra:
+
+```bash
+# 1) DNI -> PARTNER/ANLAGE (ZZCS_INFO_IC_WS solo, sin encadenar nada más)
+curl "http://127.0.0.1:3000/api/cliente?dni=30955882"
+# devuelve el partner y el anlage de esta persona
+
+# 2) La misma deuda que el paso 1, pero saltando la resolución del DNI
+curl "http://127.0.0.1:3000/api/deuda?partner=0030002708"
+
+# 3) Facturas, con partner Y anlage directos (ZWsSap002 los exige a los dos)
+curl "http://127.0.0.1:3000/api/facturas?partner=0030002708&anlage=0060002445"
+```
+
+### Valores de prueba conocidos
+
+| Origen | Valores | Estado |
+|---|---|---|
+| DNI de prueba | `DNI 30955882` → `PARTNER 0030002708`, `ANLAGE 0060002445` | **Verificado en vivo contra QA el 2026-09-01**: `/api/deuda` devuelve 1 factura impaga de $26,58. Cliente **desconectado desde 2012**, así que `/api/facturas` responde `409 E9011`. **Atención:** la consulta a `ZZCS_INFO_IC_WS` devuelve nombre y domicilio reales — este DNI puede corresponder a una persona real si QA es copia de producción, no asumas que es un dato inventado. |
+| PDF de integración de DPEC, `Z_FICA_DEUDA_IC_UNIF` | `PiIc=0010084414`, `PiNumMax=10` → 3 documentos (según el PDF) | **Valor de PRODUCCIÓN, nuestras credenciales son de QA — sin verificar, puede que no resuelva.** |
+| PDF de integración de DPEC, `Z_WS_SAP_002` | `IAnlage=0010099044`, `IPartner=0010099044`, `ICantfact=1` → 1 factura de $324.071,45 (según el PDF) | Mismo caveat: **PRODUCCIÓN, sin verificar.** |
+
+Los dos valores del PDF, como curl (para probarlos de una sola pasada):
+
+```bash
+curl "http://127.0.0.1:3000/api/deuda?partner=0010084414&max=10"
+curl "http://127.0.0.1:3000/api/facturas?partner=0010099044&anlage=0010099044&max=1"
+```
 
 `evidence/` guarda capturas crudas de corridas viejas y está en `.gitignore`
 porque contienen datos de clientes sin anonimizar.
