@@ -22,7 +22,7 @@ import { buildEnvelope } from '../soap/envelope.js';
 import { parseXml, findFault, unwrapBody } from '../soap/parser.js';
 import { callSoap } from '../soap/transport.js';
 import type { SoapOperation } from '../soap/types.js';
-import type { OperationCaller } from '../flows/consultaPorDni.js';
+import type { OperationCaller } from '../flows/consultas.js';
 
 /** Construye un OperationCaller atado a la config del server (host/credenciales/TLS/timeout). */
 export function makeLiveOperationCaller(config: LiveCallerConfig): OperationCaller {

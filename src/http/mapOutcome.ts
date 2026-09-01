@@ -2,7 +2,7 @@
 // ya clasificados en errors.ts.
 
 import { BusinessError, UpstreamError } from '../errors.js';
-import type { ConsultaOutcomeError } from '../flows/consultaPorDni.js';
+import type { ConsultaOutcomeError } from '../flows/consultas.js';
 
 export interface HttpErrorResponse {
   readonly status: number;

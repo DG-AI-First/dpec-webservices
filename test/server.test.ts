@@ -29,6 +29,14 @@ interface FacturasOkBody {
   readonly partner: string;
   readonly facturas: readonly unknown[];
 }
+interface ClienteOkBody {
+  readonly partner: string;
+  readonly anlage: string;
+  readonly status: string;
+  readonly nombre: string;
+  readonly factAdeudadas: string;
+  readonly deuda: string;
+}
 
 import { Secret } from '../src/config.js';
 import { makeLiveOperationCaller, type LiveCallerConfig } from '../src/http/callOperationLive.js';
@@ -82,9 +90,13 @@ function stubResponseFor(url: string, mode: 'ok' | 'no-encontrado' | 'rechazado'
   return null;
 }
 
-function startStub(mode: 'ok' | 'no-encontrado' | 'rechazado' | 'e9011' | 'hang'): Promise<{ server: Server; port: number }> {
+function startStub(
+  mode: 'ok' | 'no-encontrado' | 'rechazado' | 'e9011' | 'hang',
+): Promise<{ server: Server; port: number; hits: string[] }> {
   return new Promise((resolve) => {
+    const hits: string[] = [];
     const server = createServer((req, res) => {
+      hits.push(req.url ?? '');
       const body = stubResponseFor(req.url ?? '', mode);
       if (body === null) return; // hang: nunca contesta, simula el RFC colgado (ver hallazgos-tecnicos.md)
       res.writeHead(200, { 'Content-Type': 'text/xml' });
@@ -93,7 +105,7 @@ function startStub(mode: 'ok' | 'no-encontrado' | 'rechazado' | 'e9011' | 'hang'
     server.listen(0, '127.0.0.1', () => {
       const address = server.address();
       const port = typeof address === 'object' && address ? address.port : 0;
-      resolve({ server, port });
+      resolve({ server, port, hits });
     });
   });
 }
@@ -114,7 +126,7 @@ function buildConfig(port: number): LiveCallerConfig {
 async function withServer(
   mode: 'ok' | 'no-encontrado' | 'rechazado' | 'e9011' | 'hang',
   deadlineMs: number,
-  fn: (baseUrl: string) => Promise<void>,
+  fn: (baseUrl: string, stubHits: string[]) => Promise<void>,
 ): Promise<void> {
   const stub = await startStub(mode);
   const call = makeLiveOperationCaller(buildConfig(stub.port));
@@ -128,7 +140,7 @@ async function withServer(
   const appPort = typeof address === 'object' && address ? address.port : 0;
 
   try {
-    await fn(`http://127.0.0.1:${appPort}`);
+    await fn(`http://127.0.0.1:${appPort}`, stub.hits);
   } finally {
     stub.server.closeAllConnections();
     server.closeAllConnections();
@@ -176,9 +188,18 @@ describe('GET /api/deuda', () => {
     });
   });
 
-  it('400: dni ausente', async () => {
+  it('400: ni dni ni partner (ninguno de los dos identificadores)', async () => {
     await withServer('ok', 5000, async (baseUrl) => {
       const res = await fetch(`${baseUrl}/api/deuda`);
+      assert.equal(res.status, 400);
+      const body = await readJson<ErrorBody>(res);
+      assert.equal(body.error.codigo, 'PARAMETROS_INVALIDOS');
+    });
+  });
+
+  it('400: dni presente pero malformado -> DNI_INVALIDO específicamente', async () => {
+    await withServer('ok', 5000, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/api/deuda?dni=abc`);
       assert.equal(res.status, 400);
       const body = await readJson<ErrorBody>(res);
       assert.equal(body.error.codigo, 'DNI_INVALIDO');
@@ -214,6 +235,34 @@ describe('GET /api/deuda', () => {
       assert.equal(res.status, 404);
     });
   });
+
+  it('400: dni y partner juntos (ambiguo)', async () => {
+    await withServer('ok', 5000, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/api/deuda?dni=30955882&partner=0030002708`);
+      assert.equal(res.status, 400);
+      const body = await readJson<ErrorBody>(res);
+      assert.equal(body.error.codigo, 'PARAMETROS_INVALIDOS');
+    });
+  });
+
+  it('200: ?partner=<n> salta la resolución ZZCS por completo', async () => {
+    await withServer('ok', 5000, async (baseUrl, hits) => {
+      const res = await fetch(`${baseUrl}/api/deuda?partner=0030002708`);
+      assert.equal(res.status, 200);
+      const body = await readJson<DeudaOkBody>(res);
+      assert.equal(body.partner, '0030002708');
+      assert.ok(!hits.some((h) => h.includes('zzcs_info_ic_ws')), 'no debe llamar a ZZCS con partner directo');
+    });
+  });
+
+  it('400: ?max=abc no es un entero positivo', async () => {
+    await withServer('ok', 5000, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/api/deuda?dni=30955882&max=abc`);
+      assert.equal(res.status, 400);
+      const body = await readJson<ErrorBody>(res);
+      assert.equal(body.error.codigo, 'PARAMETROS_INVALIDOS');
+    });
+  });
 });
 
 describe('GET /api/facturas', () => {
@@ -234,6 +283,61 @@ describe('GET /api/facturas', () => {
       const body = await readJson<ErrorBody>(res);
       assert.equal(body.error.codigo, 'E9011');
       assert.equal(body.error.mensaje, 'Instalación desconectada');
+    });
+  });
+
+  it('400: ni dni ni partner', async () => {
+    await withServer('ok', 5000, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/api/facturas`);
+      assert.equal(res.status, 400);
+      const body = await readJson<ErrorBody>(res);
+      assert.equal(body.error.codigo, 'PARAMETROS_INVALIDOS');
+    });
+  });
+
+  it('400: partner sin anlage', async () => {
+    await withServer('ok', 5000, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/api/facturas?partner=0010099044`);
+      assert.equal(res.status, 400);
+      const body = await readJson<ErrorBody>(res);
+      assert.equal(body.error.codigo, 'PARAMETROS_INVALIDOS');
+    });
+  });
+
+  it('200: ?partner=<n>&anlage=<n> salta la resolución ZZCS', async () => {
+    await withServer('ok', 5000, async (baseUrl, hits) => {
+      const res = await fetch(`${baseUrl}/api/facturas?partner=0010099044&anlage=0010099044&max=1`);
+      assert.equal(res.status, 200);
+      const body = await readJson<FacturasOkBody>(res);
+      assert.equal(body.partner, '0010099044');
+      assert.ok(!hits.some((h) => h.includes('zzcs_info_ic_ws')), 'no debe llamar a ZZCS con partner/anlage directos');
+    });
+  });
+});
+
+describe('GET /api/cliente', () => {
+  it('200: subconjunto curado, sin datos sensibles (domicilio, email, teléfono)', async () => {
+    await withServer('ok', 5000, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/api/cliente?dni=30955882`);
+      assert.equal(res.status, 200);
+      const body = await readJson<ClienteOkBody & Record<string, unknown>>(res);
+      assert.equal(body.partner, '0030002708');
+      assert.equal(body.anlage, '0060002445');
+      assert.deepEqual(Object.keys(body).sort(), ['anlage', 'deuda', 'factAdeudadas', 'nombre', 'partner', 'status']);
+    });
+  });
+
+  it('404: DNI sin filas', async () => {
+    await withServer('no-encontrado', 5000, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/api/cliente?dni=99999999`);
+      assert.equal(res.status, 404);
+    });
+  });
+
+  it('502: OU_RESULTADO rechazado', async () => {
+    await withServer('rechazado', 5000, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/api/cliente?dni=1`);
+      assert.equal(res.status, 502);
     });
   });
 });

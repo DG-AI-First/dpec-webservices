@@ -11,7 +11,7 @@ import {
   SoapFaultError,
   TransportError,
 } from '../src/errors.js';
-import type { DeudaOutcome, FacturasOutcome } from '../src/flows/consultaPorDni.js';
+import type { DeudaOutcome, FacturasOutcome } from '../src/flows/consultas.js';
 import { mapOutcomeToHttpError, validateDni } from '../src/http/mapOutcome.js';
 
 describe('validateDni', () => {

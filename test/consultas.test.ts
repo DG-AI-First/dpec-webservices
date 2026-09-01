@@ -1,4 +1,4 @@
-// Tests unitarios de src/flows/consultaPorDni.ts.
+// Tests unitarios de src/flows/consultas.ts.
 // Fakes planos como OperationCaller, cero mocking: la capacidad de red se
 // inyecta, así que estos tests corren sin node:http ni fetch.
 
@@ -10,13 +10,16 @@ import { zFicaDeudaIcUnif, type ZFicaDeudaIcUnifOutput } from '../src/services/z
 import { zWsSap002, type ZWsSap002Output } from '../src/services/zWsSap002.js';
 import type { SoapOperation } from '../src/soap/types.js';
 import {
-  consultarDeudaPorDni,
-  consultarFacturasPorDni,
+  consultarDeuda,
+  consultarFacturas,
+  consultarCliente,
   type OperationCaller,
-} from '../src/flows/consultaPorDni.js';
+} from '../src/flows/consultas.js';
 
-// Fila mínima válida de ZZCS_INFO_IC_WS -- sólo partner/anlage importan al flow.
-function row(partner: string, anlage: string): OuInfoIcWsRow {
+// Fila de ZZCS_INFO_IC_WS -- overrides opcionales para los campos que le
+// importan a /api/cliente (status/nombre/factAdeudadas/deuda), el resto
+// queda vacío porque a deuda/facturas sólo les importa partner/anlage.
+function row(partner: string, anlage: string, overrides: Partial<OuInfoIcWsRow> = {}): OuInfoIcWsRow {
   return {
     partner, type: '', idnumberDni: '', idnumberCuit: '', idnumberCuil: '', idnumberCi: '',
     idnumberOtr: '', name1Text: '', streetIc: '', houseNum1Ic: '', floorIc: '', roomnumberIc: '',
@@ -24,6 +27,7 @@ function row(partner: string, anlage: string): OuInfoIcWsRow {
     streetIn: '', houseNum1In: '', floorIn: '', roomnumberIn: '', city1In: '', postCode1In: '',
     einzdat: '', auszdat: '', status: '', factAdeudadas: '', deuda: '', discStatus: '',
     smtpAddr: '', telNumber: '', mobNumber: '', eqfnr: '', lockreason: '', descripcion: '',
+    ...overrides,
   };
 }
 
@@ -45,7 +49,7 @@ const ZZCS_OK: ZzcsInfoIcWsOutput = { ouResultado: '0', rows: [row('0030002708',
 const ZZCS_NO_ROWS: ZzcsInfoIcWsOutput = { ouResultado: '0', rows: [] };
 const ZZCS_RECHAZADO: ZzcsInfoIcWsOutput = { ouResultado: '99', rows: [] };
 
-describe('consultarDeudaPorDni', () => {
+describe('consultarDeuda', () => {
   it('resuelve PARTNER por ZZCS y devuelve los documentos de FICA (chain verificada en vivo 2026-09-01)', async () => {
     const ficaOutput: ZFicaDeudaIcUnifOutput = {
       poDocumentos: [
@@ -58,7 +62,7 @@ describe('consultarDeudaPorDni', () => {
       [zFicaDeudaIcUnif.operationName]: { output: ficaOutput },
     });
 
-    const outcome = await consultarDeudaPorDni(call, '30955882');
+    const outcome = await consultarDeuda(call, { kind: 'dni', dni: '30955882' });
     assert.equal(outcome.kind, 'ok');
     assert.ok(outcome.kind === 'ok');
     assert.equal(outcome.partner, '0030002708');
@@ -73,7 +77,7 @@ describe('consultarDeudaPorDni', () => {
       return ZZCS_NO_ROWS;
     }) as OperationCaller;
 
-    const outcome = await consultarDeudaPorDni(call, '99999999');
+    const outcome = await consultarDeuda(call, { kind: 'dni', dni: '99999999' });
     assert.equal(outcome.kind, 'no-encontrado');
     assert.equal(ficaCalled, false, 'no debe encadenar el segundo call si no hay PARTNER');
   });
@@ -81,7 +85,7 @@ describe('consultarDeudaPorDni', () => {
   it('ZZCS con OU_RESULTADO no-"0" (ej. "99") -> zzcs-rechazado, verbatim', async () => {
     const call = fakeCaller({ [zzcsInfoIcWs.operationName]: { output: ZZCS_RECHAZADO } });
 
-    const outcome = await consultarDeudaPorDni(call, '');
+    const outcome = await consultarDeuda(call, { kind: 'dni', dni: '' });
     assert.equal(outcome.kind, 'zzcs-rechazado');
     assert.ok(outcome.kind === 'zzcs-rechazado');
     assert.equal(outcome.ouResultado, '99');
@@ -97,7 +101,7 @@ describe('consultarDeudaPorDni', () => {
       [zFicaDeudaIcUnif.operationName]: { output: ficaOutput },
     });
 
-    const outcome = await consultarDeudaPorDni(call, '30955882');
+    const outcome = await consultarDeuda(call, { kind: 'dni', dni: '30955882' });
     assert.equal(outcome.kind, 'error-negocio');
     assert.ok(outcome.kind === 'error-negocio');
     assert.equal(outcome.codigo, 'E01');
@@ -108,7 +112,7 @@ describe('consultarDeudaPorDni', () => {
     const transportErr = new TransportError('Transport failure: AbortError', 'timeout');
     const call = fakeCaller({ [zzcsInfoIcWs.operationName]: { error: transportErr } });
 
-    const outcome = await consultarDeudaPorDni(call, '30955882');
+    const outcome = await consultarDeuda(call, { kind: 'dni', dni: '30955882' });
     assert.equal(outcome.kind, 'error');
     assert.ok(outcome.kind === 'error');
     assert.equal(outcome.error, transportErr);
@@ -122,7 +126,7 @@ describe('consultarDeudaPorDni', () => {
       [zFicaDeudaIcUnif.operationName]: { error: transportErr },
     });
 
-    const outcome = await consultarDeudaPorDni(call, '30955882');
+    const outcome = await consultarDeuda(call, { kind: 'dni', dni: '30955882' });
     assert.equal(outcome.kind, 'error');
     assert.ok(outcome.kind === 'error');
     assert.equal(outcome.error, transportErr);
@@ -132,11 +136,40 @@ describe('consultarDeudaPorDni', () => {
     const bug = new Error('bug de programación, no de negocio');
     const call = fakeCaller({ [zzcsInfoIcWs.operationName]: { error: bug } });
 
-    await assert.rejects(() => consultarDeudaPorDni(call, '30955882'), bug);
+    await assert.rejects(() => consultarDeuda(call, { kind: 'dni', dni: '30955882' }), bug);
+  });
+
+  it('input {kind: partner} salta ZZCS por completo y usa el partner directo', async () => {
+    let zzcsCalled = false;
+    const ficaOutput: ZFicaDeudaIcUnifOutput = { poDocumentos: [], poMensaje: [] };
+    const call: OperationCaller = (async (op: SoapOperation<unknown, unknown>) => {
+      if (op.operationName === zzcsInfoIcWs.operationName) zzcsCalled = true;
+      return ficaOutput;
+    }) as OperationCaller;
+
+    const outcome = await consultarDeuda(call, { kind: 'partner', partner: '0010084414' });
+    assert.equal(zzcsCalled, false, 'no debe resolver DNI si ya viene el partner');
+    assert.equal(outcome.kind, 'ok');
+    assert.ok(outcome.kind === 'ok');
+    assert.equal(outcome.partner, '0010084414', 'echoea el partner recibido, no uno inventado');
+  });
+
+  it('piNumMax por defecto es "10", pero se puede pisar (ej. PDF de DPEC usa 1)', async () => {
+    let capturedInput: unknown;
+    const call: OperationCaller = (async (op: SoapOperation<unknown, unknown>, input: unknown) => {
+      if (op.operationName === zFicaDeudaIcUnif.operationName) {
+        capturedInput = input;
+        return { poDocumentos: [], poMensaje: [] } satisfies ZFicaDeudaIcUnifOutput;
+      }
+      return ZZCS_OK;
+    }) as OperationCaller;
+
+    await consultarDeuda(call, { kind: 'dni', dni: '30955882' }, '1');
+    assert.deepEqual(capturedInput, { piIc: '0030002708', piCc: '', piI: '', piFechaHasta: '', piNumMax: '1' });
   });
 });
 
-describe('consultarFacturasPorDni', () => {
+describe('consultarFacturas', () => {
   it('resuelve PARTNER/ANLAGE por ZZCS y pasa ambos a ZWsSap002', async () => {
     let capturedInput: unknown;
     const wsOutput: ZWsSap002Output = {
@@ -152,7 +185,7 @@ describe('consultarFacturasPorDni', () => {
       return ZZCS_OK;
     }) as OperationCaller;
 
-    const outcome = await consultarFacturasPorDni(call, '30955882');
+    const outcome = await consultarFacturas(call, { kind: 'dni', dni: '30955882' });
     assert.equal(outcome.kind, 'ok');
     assert.ok(outcome.kind === 'ok');
     assert.equal(outcome.partner, '0030002708');
@@ -167,7 +200,7 @@ describe('consultarFacturasPorDni', () => {
       return ZZCS_NO_ROWS;
     }) as OperationCaller;
 
-    const outcome = await consultarFacturasPorDni(call, '99999999');
+    const outcome = await consultarFacturas(call, { kind: 'dni', dni: '99999999' });
     assert.equal(outcome.kind, 'no-encontrado');
     assert.equal(wsCalled, false);
   });
@@ -175,7 +208,7 @@ describe('consultarFacturasPorDni', () => {
   it('ZZCS rechazado (OU_RESULTADO="99") -> zzcs-rechazado', async () => {
     const call = fakeCaller({ [zzcsInfoIcWs.operationName]: { output: ZZCS_RECHAZADO } });
 
-    const outcome = await consultarFacturasPorDni(call, '');
+    const outcome = await consultarFacturas(call, { kind: 'dni', dni: '' });
     assert.equal(outcome.kind, 'zzcs-rechazado');
     assert.ok(outcome.kind === 'zzcs-rechazado');
     assert.equal(outcome.ouResultado, '99');
@@ -188,7 +221,7 @@ describe('consultarFacturasPorDni', () => {
       [zWsSap002.operationName]: { output: wsOutput },
     });
 
-    const outcome = await consultarFacturasPorDni(call, '30955882');
+    const outcome = await consultarFacturas(call, { kind: 'dni', dni: '30955882' });
     assert.equal(outcome.kind, 'error-negocio');
     assert.ok(outcome.kind === 'error-negocio');
     assert.equal(outcome.codigo, 'E9011');
@@ -202,7 +235,96 @@ describe('consultarFacturasPorDni', () => {
       [zWsSap002.operationName]: { error: transportErr },
     });
 
-    const outcome = await consultarFacturasPorDni(call, '30955882');
+    const outcome = await consultarFacturas(call, { kind: 'dni', dni: '30955882' });
+    assert.equal(outcome.kind, 'error');
+    assert.ok(outcome.kind === 'error');
+    assert.equal(outcome.error, transportErr);
+  });
+
+  it('input {kind: partner} salta ZZCS y pasa partner/anlage directos a ZWsSap002', async () => {
+    let zzcsCalled = false;
+    let capturedInput: unknown;
+    const wsOutput: ZWsSap002Output = { eMsgnro: '000', eMsgtxt: '', tFact: [] };
+    const call: OperationCaller = (async (op: SoapOperation<unknown, unknown>, input: unknown) => {
+      if (op.operationName === zzcsInfoIcWs.operationName) zzcsCalled = true;
+      if (op.operationName === zWsSap002.operationName) capturedInput = input;
+      return wsOutput;
+    }) as OperationCaller;
+
+    const outcome = await consultarFacturas(call, { kind: 'partner', partner: '0010099044', anlage: '0010099044' });
+    assert.equal(zzcsCalled, false, 'no debe resolver DNI si ya vienen partner y anlage');
+    assert.equal(outcome.kind, 'ok');
+    assert.ok(outcome.kind === 'ok');
+    assert.equal(outcome.partner, '0010099044', 'echoea el partner recibido');
+    assert.deepEqual(capturedInput, { iPartner: '0010099044', iAnlage: '0010099044', iCantfact: '10' });
+  });
+
+  it('iCantfact por defecto es "10", pero se puede pisar (ej. PDF de DPEC usa 1)', async () => {
+    let capturedInput: unknown;
+    const call: OperationCaller = (async (op: SoapOperation<unknown, unknown>, input: unknown) => {
+      if (op.operationName === zWsSap002.operationName) {
+        capturedInput = input;
+        return { eMsgnro: '000', eMsgtxt: '', tFact: [] } satisfies ZWsSap002Output;
+      }
+      return ZZCS_OK;
+    }) as OperationCaller;
+
+    await consultarFacturas(call, { kind: 'dni', dni: '30955882' }, '1');
+    assert.deepEqual(capturedInput, { iPartner: '0030002708', iAnlage: '0060002445', iCantfact: '1' });
+  });
+});
+
+describe('consultarCliente', () => {
+  it('devuelve el subconjunto curado: partner, anlage, status, nombre, factAdeudadas, deuda', async () => {
+    const output: ZzcsInfoIcWsOutput = {
+      ouResultado: '0',
+      rows: [
+        row('0030002708', '0060002445', {
+          status: 'ACTIVO',
+          name1Text: 'Juan Perez',
+          factAdeudadas: '1',
+          deuda: '26.58',
+          streetIc: 'Calle Falsa 123', // dato sensible: no debe aparecer en el resultado
+          smtpAddr: 'juan@example.com', // dato sensible: no debe aparecer en el resultado
+        }),
+      ],
+    };
+    const call = fakeCaller({ [zzcsInfoIcWs.operationName]: { output } });
+
+    const outcome = await consultarCliente(call, '30955882');
+    assert.equal(outcome.kind, 'ok');
+    assert.ok(outcome.kind === 'ok');
+    assert.deepEqual(outcome.cliente, {
+      partner: '0030002708',
+      anlage: '0060002445',
+      status: 'ACTIVO',
+      nombre: 'Juan Perez',
+      factAdeudadas: '1',
+      deuda: '26.58',
+    });
+  });
+
+  it('DNI sin filas -> no-encontrado', async () => {
+    const call = fakeCaller({ [zzcsInfoIcWs.operationName]: { output: ZZCS_NO_ROWS } });
+
+    const outcome = await consultarCliente(call, '99999999');
+    assert.equal(outcome.kind, 'no-encontrado');
+  });
+
+  it('OU_RESULTADO rechazado -> zzcs-rechazado, verbatim', async () => {
+    const call = fakeCaller({ [zzcsInfoIcWs.operationName]: { output: ZZCS_RECHAZADO } });
+
+    const outcome = await consultarCliente(call, '1');
+    assert.equal(outcome.kind, 'zzcs-rechazado');
+    assert.ok(outcome.kind === 'zzcs-rechazado');
+    assert.equal(outcome.ouResultado, '99');
+  });
+
+  it('falla de transporte -> outcome error', async () => {
+    const transportErr = new TransportError('boom', 'timeout');
+    const call = fakeCaller({ [zzcsInfoIcWs.operationName]: { error: transportErr } });
+
+    const outcome = await consultarCliente(call, '30955882');
     assert.equal(outcome.kind, 'error');
     assert.ok(outcome.kind === 'error');
     assert.equal(outcome.error, transportErr);
