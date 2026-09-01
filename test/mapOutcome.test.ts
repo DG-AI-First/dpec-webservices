@@ -1,5 +1,5 @@
 // Tests unitarios de src/http/mapOutcome.ts: tabla de status HTTP para los
-// outcomes de flows/consultaPorDni.ts y para los ProbeError que puede lanzar
+// outcomes de flows/consultaPorDni.ts y para los UpstreamError que puede lanzar
 // la capacidad de llamada SOAP en vivo. El exit-code mapping de errors.ts
 // (0/2/3/4, probe CLI) no se toca -- ésta es la tabla equivalente para HTTP.
 
@@ -66,7 +66,7 @@ describe('mapOutcomeToHttpError — outcomes propios del flow', () => {
   });
 });
 
-describe('mapOutcomeToHttpError — outcome "error" (ProbeError de la capa de transporte)', () => {
+describe('mapOutcomeToHttpError — outcome "error" (UpstreamError de la capa de transporte)', () => {
   it('timeout -> 504 (SAP colgado, deadline propio del server)', () => {
     const outcome: DeudaOutcome = { kind: 'error', error: new TransportError('boom', 'timeout') };
     const mapped = mapOutcomeToHttpError(outcome);

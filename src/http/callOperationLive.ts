@@ -1,7 +1,7 @@
 // Implementación real de OperationCaller (flows/consultaPorDni.ts) para el
 // server HTTP: arma el envelope, llama SOAP y clasifica la respuesta en
-// ProbeError, igual que runOperation en index.ts pero SIN evidencia a disco
-// -- el server no escribe evidence/, sólo el probe.
+// UpstreamError, sin escribir evidencia a disco -- eso era exclusivo del
+// probe (ya eliminado), el server no escribe evidence/.
 //
 // Deliberadamente sin test unitario propio (igual criterio que
 // soap/transport.ts): es red real. Se ejerce con el stub de test/server.test.ts.
@@ -17,7 +17,7 @@ export type LiveCallerConfig = Pick<
   AppConfig,
   'scheme' | 'host' | 'sapClient' | 'user' | 'password' | 'basicAuthCharset' | 'timeoutMs' | 'tls'
 >;
-import { ProbeError, SoapFaultError, TransportError, classifyHttpStatus, toTransportError } from '../errors.js';
+import { UpstreamError, SoapFaultError, TransportError, classifyHttpStatus, toTransportError } from '../errors.js';
 import { buildEnvelope } from '../soap/envelope.js';
 import { parseXml, findFault, unwrapBody } from '../soap/parser.js';
 import { callSoap } from '../soap/transport.js';
@@ -32,7 +32,7 @@ export function makeLiveOperationCaller(config: LiveCallerConfig): OperationCall
   ): Promise<TOutput> {
     // Invariante: el server siempre corre en modo vivo (no hay dry-run para
     // HTTP). Si esto dispara, es un error de configuración/arranque, no un
-    // caso de negocio -- por eso no es un ProbeError: el catch de arriba
+    // caso de negocio -- por eso no es un UpstreamError: el catch de arriba
     // (router) lo trata como 500 genérico.
     if (config.user === null || config.password === null) {
       throw new Error('Invariant violated: the server requires resolved SAP credentials.');
@@ -54,7 +54,7 @@ export function makeLiveOperationCaller(config: LiveCallerConfig): OperationCall
 
       const parsed = parseXml(callResult.rawBody);
 
-      // Fault ANTES que status: los faults SOAP 1.1 viajan en HTTP 500 (ver index.ts).
+      // Fault ANTES que status: los faults SOAP 1.1 viajan en HTTP 500.
       const fault = findFault(parsed);
       if (fault) throw new SoapFaultError(fault.faultCode, fault.faultString);
 
@@ -68,7 +68,7 @@ export function makeLiveOperationCaller(config: LiveCallerConfig): OperationCall
       const unwrapped = unwrapBody(parsed, op.operationName);
       return op.parseResult(unwrapped.node);
     } catch (err) {
-      if (err instanceof ProbeError) throw err;
+      if (err instanceof UpstreamError) throw err;
       throw toTransportError(err);
     }
   };

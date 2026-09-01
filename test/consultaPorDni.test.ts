@@ -104,7 +104,7 @@ describe('consultarDeudaPorDni', () => {
     assert.equal(outcome.mensaje, 'Partner inexistente');
   });
 
-  it('timeout/falla de transporte en ZZCS -> outcome error, con el ProbeError original', async () => {
+  it('timeout/falla de transporte en ZZCS -> outcome error, con el UpstreamError original', async () => {
     const transportErr = new TransportError('Transport failure: AbortError', 'timeout');
     const call = fakeCaller({ [zzcsInfoIcWs.operationName]: { error: transportErr } });
 
@@ -128,7 +128,7 @@ describe('consultarDeudaPorDni', () => {
     assert.equal(outcome.error, transportErr);
   });
 
-  it('un error que NO es ProbeError se propaga (rejects), no se traga como outcome', async () => {
+  it('un error que NO es UpstreamError se propaga (rejects), no se traga como outcome', async () => {
     const bug = new Error('bug de programación, no de negocio');
     const call = fakeCaller({ [zzcsInfoIcWs.operationName]: { error: bug } });
 

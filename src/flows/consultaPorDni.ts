@@ -7,12 +7,12 @@
 // -> 1 documento de $26.58 (ZFicaDeudaIcUnif).
 
 import type { SoapOperation } from '../soap/types.js';
-import { ProbeError } from '../errors.js';
+import { UpstreamError } from '../errors.js';
 import { zzcsInfoIcWs, type ZzcsInfoIcWsInput } from '../services/zzcsInfoIcWs.js';
 import { zFicaDeudaIcUnif, type PoDocumento } from '../services/zFicaDeudaIcUnif.js';
 import { zWsSap002, type TFactRow } from '../services/zWsSap002.js';
 
-/** Capacidad inyectada: llama una operación SOAP y devuelve su output ya parseado, o lanza un ProbeError. */
+/** Capacidad inyectada: llama una operación SOAP y devuelve su output ya parseado, o lanza un UpstreamError. */
 export type OperationCaller = <TInput, TOutput>(
   op: SoapOperation<TInput, TOutput>,
   input: TInput,
@@ -22,7 +22,7 @@ type PartnerResolution =
   | { readonly kind: 'resuelto'; readonly partner: string; readonly anlage: string }
   | { readonly kind: 'no-encontrado' }
   | { readonly kind: 'zzcs-rechazado'; readonly ouResultado: string }
-  | { readonly kind: 'error'; readonly error: ProbeError };
+  | { readonly kind: 'error'; readonly error: UpstreamError };
 
 /**
  * PARTNER/ANLAGE salen siempre de la PRIMERA fila devuelta por ZZCS. El
@@ -37,7 +37,7 @@ async function resolveDniToPartner(call: OperationCaller, dni: string): Promise<
   try {
     output = await call(zzcsInfoIcWs, input);
   } catch (err) {
-    if (err instanceof ProbeError) return { kind: 'error', error: err };
+    if (err instanceof UpstreamError) return { kind: 'error', error: err };
     throw err;
   }
 
@@ -61,7 +61,7 @@ export type ConsultaOutcomeError =
   | { readonly kind: 'no-encontrado' }
   | { readonly kind: 'zzcs-rechazado'; readonly ouResultado: string }
   | { readonly kind: 'error-negocio'; readonly codigo: string; readonly mensaje: string }
-  | { readonly kind: 'error'; readonly error: ProbeError };
+  | { readonly kind: 'error'; readonly error: UpstreamError };
 
 export type DeudaOutcome =
   | ConsultaOutcomeError
@@ -86,7 +86,7 @@ export async function consultarDeudaPorDni(
       piNumMax,
     });
   } catch (err) {
-    if (err instanceof ProbeError) return { kind: 'error', error: err };
+    if (err instanceof UpstreamError) return { kind: 'error', error: err };
     throw err;
   }
 
@@ -124,7 +124,7 @@ export async function consultarFacturasPorDni(
       iCantfact,
     });
   } catch (err) {
-    if (err instanceof ProbeError) return { kind: 'error', error: err };
+    if (err instanceof UpstreamError) return { kind: 'error', error: err };
     throw err;
   }
 

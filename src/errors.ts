@@ -1,11 +1,7 @@
-// Taxonomía de errores -> exit codes. Responden "quién actúa después", no
-// "qué se rompió":
-//   0 ambos servicios respondieron bien          -> nadie
-//   2 el problema es nuestra config/credenciales -> nosotros
-//   3 SAP respondió con un fault                 -> DPEC
-//   4 no se pudo obtener una respuesta usable    -> infra/red/TLS
-
-export type ExitCode = 0 | 2 | 3 | 4;
+// Taxonomía de errores del lado SAP/transporte, consumida por
+// http/mapOutcome.ts para elegir el status HTTP de respuesta. La versión
+// previa también cargaba un exit code (0/2/3/4): eso era el contrato de
+// salida del probe CLI, que ya no existe.
 
 export type ErrorKind =
   | 'config-missing'
@@ -20,15 +16,14 @@ export type ErrorKind =
   | 'http-error'
   | 'malformed-response';
 
-export abstract class ProbeError extends Error {
+/** Errores clasificados al llamar a SAP: auth, fault SOAP, negocio o transporte. */
+export abstract class UpstreamError extends Error {
   abstract readonly kind: ErrorKind;
-  abstract readonly exitCode: ExitCode;
   readonly remediation?: string;
 }
 
-export class AuthRejectedError extends ProbeError {
+export class AuthRejectedError extends UpstreamError {
   readonly kind: ErrorKind = 'auth-rejected';
-  readonly exitCode: ExitCode = 2;
 
   constructor(
     message: string,
@@ -39,9 +34,8 @@ export class AuthRejectedError extends ProbeError {
   }
 }
 
-export class SoapFaultError extends ProbeError {
+export class SoapFaultError extends UpstreamError {
   readonly kind: ErrorKind = 'soap-fault';
-  readonly exitCode: ExitCode = 3;
 
   constructor(
     readonly faultCode: string,
@@ -52,9 +46,8 @@ export class SoapFaultError extends ProbeError {
   }
 }
 
-export class BusinessError extends ProbeError {
+export class BusinessError extends UpstreamError {
   readonly kind: ErrorKind = 'business-error';
-  readonly exitCode: ExitCode = 3;
 
   constructor(
     readonly code: string,
@@ -65,9 +58,7 @@ export class BusinessError extends ProbeError {
   }
 }
 
-export class TransportError extends ProbeError {
-  readonly exitCode: ExitCode = 4;
-
+export class TransportError extends UpstreamError {
   constructor(
     message: string,
     readonly kind: ErrorKind,
@@ -78,9 +69,8 @@ export class TransportError extends ProbeError {
   }
 }
 
-export class ParseError extends ProbeError {
+export class ParseError extends UpstreamError {
   readonly kind: ErrorKind = 'malformed-response';
-  readonly exitCode: ExitCode = 4;
 
   constructor(message: string) {
     super(message);
@@ -198,17 +188,4 @@ export function toTransportError(err: unknown): TransportError {
   }
   const message = err instanceof Error ? err.message : String(err);
   return new TransportError(`Transport failure: ${message}`, 'network');
-}
-
-/**
- * Ambos servicios corren independientes; una falla nunca bloquea la
- * evidencia del otro. Precedencia: cualquier 4 -> 4; si no, cualquier 3 -> 3;
- * si no, 0. Transport gana porque un servicio inalcanzable no dice nada de
- * su comportamiento de negocio.
- */
-export function aggregateExitCode(codes: readonly ExitCode[]): ExitCode {
-  if (codes.includes(4)) return 4;
-  if (codes.includes(3)) return 3;
-  if (codes.includes(2)) return 2;
-  return 0;
 }

@@ -1,8 +1,7 @@
-// Tabla de status HTTP para el server. El exit-code mapping de errors.ts
-// (0/2/3/4) es del probe CLI y queda intacto -- esta es la tabla equivalente
-// para respuestas HTTP, sobre los mismos outcomes/ProbeError ya clasificados.
+// Tabla de status HTTP para el server, sobre los mismos outcomes/UpstreamError
+// ya clasificados en errors.ts.
 
-import { BusinessError, ProbeError } from '../errors.js';
+import { BusinessError, UpstreamError } from '../errors.js';
 import type { ConsultaOutcomeError } from '../flows/consultaPorDni.js';
 
 export interface HttpErrorResponse {
@@ -18,7 +17,7 @@ function errorResponse(status: number, codigo: string, mensaje: string): HttpErr
  * auth-rejected nunca expone status/detalle upstream: el mensaje es genérico
  * a propósito, ver house rule "never log/leak credentials".
  */
-function mapProbeError(error: ProbeError): HttpErrorResponse {
+function mapUpstreamError(error: UpstreamError): HttpErrorResponse {
   if (error instanceof BusinessError) {
     // Defensivo: en el diseño actual un business-error del segundo call llega
     // como outcome 'error-negocio', no como excepción. Se mapea igual por si acaso.
@@ -50,7 +49,7 @@ export function mapOutcomeToHttpError(outcome: ConsultaOutcomeError): HttpErrorR
     case 'error-negocio':
       return errorResponse(409, outcome.codigo, outcome.mensaje);
     case 'error':
-      return mapProbeError(outcome.error);
+      return mapUpstreamError(outcome.error);
   }
 }
 

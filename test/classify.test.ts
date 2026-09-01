@@ -10,21 +10,18 @@ import {
   determineVerdict,
   diagnoseCause,
   toTransportError,
-  aggregateExitCode,
 } from '../src/errors.js';
 
 describe('classifyHttpStatus', () => {
-  it('classifies 401 as auth-rejected, exit code 2', () => {
+  it('classifies 401 as auth-rejected', () => {
     const err = classifyHttpStatus(401);
     assert.ok(err instanceof AuthRejectedError);
     assert.equal(err?.kind, 'auth-rejected');
-    assert.equal(err?.exitCode, 2);
   });
 
-  it('classifies 403 as auth-rejected, exit code 2', () => {
+  it('classifies 403 as auth-rejected', () => {
     const err = classifyHttpStatus(403);
     assert.ok(err instanceof AuthRejectedError);
-    assert.equal(err?.exitCode, 2);
   });
 
   it('returns null for a normal 200', () => {
@@ -33,14 +30,13 @@ describe('classifyHttpStatus', () => {
 });
 
 describe('SoapFaultError — HTTP 500 carries a fault, not a transport failure', () => {
-  it('is exit code 3, kind soap-fault, even though it rides on HTTP 500', () => {
+  it('is kind soap-fault, even though it rides on HTTP 500', () => {
     // Fault real capturado en QA (prefijo soap-env:, dato de cable genuino).
     const err = new SoapFaultError(
       'soap-env:Server',
       'Error en el tratamiento de servicio web; Más detalles en log de error de servicio web en la página de proveedor',
     );
     assert.equal(err.kind, 'soap-fault');
-    assert.equal(err.exitCode, 3);
     assert.equal(err.faultCode, 'soap-env:Server');
   });
 });
@@ -54,11 +50,10 @@ describe('classifyBusinessMessage', () => {
     assert.equal(classifyBusinessMessage('000', 'ok'), null);
   });
 
-  it('treats a non-zero code as a BusinessError, exit code 3', () => {
+  it('treats a non-zero code as a BusinessError', () => {
     const err = classifyBusinessMessage('E01', 'Partner not found');
     assert.ok(err instanceof BusinessError);
     assert.equal(err?.kind, 'business-error');
-    assert.equal(err?.exitCode, 3);
     assert.equal(err?.code, 'E01');
   });
 });
@@ -111,26 +106,11 @@ describe('diagnoseCause — cause-chain walk for native fetch failures', () => {
 });
 
 describe('toTransportError', () => {
-  it('wraps a diagnosed cause into a TransportError with exit code 4', () => {
+  it('wraps a diagnosed cause into a TransportError', () => {
     const inner = Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' });
     const outer = new Error('fetch failed', { cause: inner });
     const err = toTransportError(outer);
     assert.ok(err instanceof TransportError);
-    assert.equal(err.exitCode, 4);
     assert.equal(err.kind, 'network');
-  });
-});
-
-describe('aggregateExitCode — precedence across independent service runs', () => {
-  it('[4, 3] -> 4 (transport outranks business/fault)', () => {
-    assert.equal(aggregateExitCode([4, 3]), 4);
-  });
-
-  it('[3, 0] -> 3', () => {
-    assert.equal(aggregateExitCode([3, 0]), 3);
-  });
-
-  it('[0, 0] -> 0', () => {
-    assert.equal(aggregateExitCode([0, 0]), 0);
   });
 });
