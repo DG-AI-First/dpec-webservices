@@ -49,7 +49,7 @@ dados por `PARTNER`/`ANLAGE`, no por DNI. Nunca mandes los dos a la vez.
 |---|---|---|
 | `dni` | `/api/cliente`, `/api/deuda`, `/api/facturas` | El DNI de la persona. Dispara la resolución `ZZCS_INFO_IC_WS`. |
 | `partner` | `/api/deuda`, `/api/facturas` | El `PARTNER` de SAP, directo. Alternativa a `dni`. |
-| `anlage` | `/api/facturas` | El `ANLAGE` de SAP. Obligatorio junto con `partner` en `/api/facturas`; no aplica a `/api/deuda`. |
+| `anlage` | `/api/facturas` | El `ANLAGE` de SAP. Obligatorio junto con `partner` en `/api/facturas`. En `/api/deuda` no aplica: si lo mandás igual, se ignora en silencio (`ZFicaDeudaIcUnif` no lo necesita). |
 | `max` | `/api/deuda`, `/api/facturas` | Cuántos registros pedir (`PiNumMax` / `ICantfact`). Entero positivo, default `10`. |
 
 `partner` y `anlage` son claves de SAP con ceros a la izquierda
@@ -179,7 +179,7 @@ Tres niveles, de más barato a más convincente.
 
 ```bash
 npm run check   # tsc --noEmit
-npm test        # 209 tests
+npm test        # 211 tests
 npm start       # y después el curl de arriba, contra QA de verdad
 ```
 
@@ -351,7 +351,8 @@ caja negra:
 curl "http://127.0.0.1:3000/api/cliente?dni=30955882"
 # devuelve el partner y el anlage de esta persona
 
-# 2) La misma deuda que el paso 1, pero saltando la resolución del DNI
+# 2) La deuda de ese partner, usando el que devolvió el paso 1 y salteando
+#    la resolución del DNI (ZFicaDeudaIcUnif solo)
 curl "http://127.0.0.1:3000/api/deuda?partner=0030002708"
 
 # 3) Facturas, con partner Y anlage directos (ZWsSap002 los exige a los dos)
@@ -369,7 +370,13 @@ curl "http://127.0.0.1:3000/api/facturas?partner=0030002708&anlage=0060002445"
 | PDF de integración de DPEC, `Z_FICA_DEUDA_IC_UNIF` | `PiIc=0010084414` | **Verificado contra QA el 2026-09-01: `200` con `documentos: []` y `mensajes: [{"codigo":"001","descripcion":"No se registra deuda"}]`.** El interlocutor existe en QA (no da error) y SAP confirma explícitamente que no tiene deuda. El PDF muestra 3 documentos porque sus ejemplos son de PRODUCCIÓN. |
 | PDF de integración de DPEC, `Z_WS_SAP_002` | `IAnlage=0010099044`, `IPartner=0010099044`, `ICantfact=1` | **Verificado contra QA el 2026-09-01: `200` con 1 factura** (`opbel 001034259703`, vto. 2025-09-03, $215.242,78). El PDF dice $324.071,45 porque es el dato de PRODUCCIÓN: los identificadores son los mismos, los importes no. |
 
-Los dos valores del PDF, como curl (para probarlos de una sola pasada):
+**Cómo se verificaron, y por qué no hay archivo de evidencia.** Las tres filas
+se comprobaron corriendo los `curl` de esta sección contra QA el 2026-09-01.
+No queda rastro en `evidence/` porque el server HTTP no escribe a disco a
+propósito — eso era del probe de diagnóstico, que se eliminó. La reproducción
+son los comandos mismos: si alguno deja de dar lo que dice acá, algo cambió.
+
+Los dos casos del PDF, para copiar y pegar de una:
 
 ```bash
 curl "http://127.0.0.1:3000/api/deuda?partner=0010084414&max=10"

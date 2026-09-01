@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Composition root del server HTTP: config -> caller SOAP en vivo -> router.
-// Entrypoint del producto ("npm start"). NO escribe evidencia a disco -- eso
-// sigue siendo trabajo exclusivo del probe (src/index.ts + src/evidence/).
+// Entrypoint unico del producto ("npm start"). NO escribe nada a disco: un
+// archivo por request seria inmanejable en produccion.
 
 import { createServer } from 'node:http';
 import { loadConfig, ConfigError } from './config.js';

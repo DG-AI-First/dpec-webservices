@@ -1,7 +1,6 @@
-// Implementación real de OperationCaller (flows/consultaPorDni.ts) para el
-// server HTTP: arma el envelope, llama SOAP y clasifica la respuesta en
-// UpstreamError, sin escribir evidencia a disco -- eso era exclusivo del
-// probe (ya eliminado), el server no escribe evidence/.
+// Implementación real de OperationCaller (flows/consultas.ts) para el server
+// HTTP: arma el envelope, llama SOAP y clasifica la respuesta en
+// UpstreamError. No escribe nada a disco.
 //
 // Deliberadamente sin test unitario propio (igual criterio que
 // soap/transport.ts): es red real. Se ejerce con el stub de test/server.test.ts.
@@ -30,10 +29,9 @@ export function makeLiveOperationCaller(config: LiveCallerConfig): OperationCall
     op: SoapOperation<TInput, TOutput>,
     input: TInput,
   ): Promise<TOutput> {
-    // Invariante: el server siempre corre en modo vivo (no hay dry-run para
-    // HTTP). Si esto dispara, es un error de configuración/arranque, no un
-    // caso de negocio -- por eso no es un UpstreamError: el catch de arriba
-    // (router) lo trata como 500 genérico.
+    // Invariante: loadConfig() ya exige credenciales, así que esto no puede
+    // dispararse. Si lo hace es error de arranque, no de negocio -- por eso no
+    // es UpstreamError: el catch del router lo trata como 500 genérico.
     if (config.user === null || config.password === null) {
       throw new Error('Invariant violated: the server requires resolved SAP credentials.');
     }

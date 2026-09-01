@@ -1,6 +1,6 @@
 // Punto de llamada a fetch. Deliberadamente sin test unitario: mockear fetch
-// global testearía el mock, no el comportamiento real. Verificado por
-// dry-run y por la sonda en vivo. No debe conocer nada de services/.
+// global testearía el mock, no el comportamiento real. Se ejerce con el stub
+// local de test/server.test.ts. No debe conocer nada de services/.
 
 import { Agent, getGlobalDispatcher } from 'undici';
 import { readFileSync } from 'node:fs';
@@ -50,10 +50,11 @@ function buildDispatcher(tls: TlsMode): Agent | undefined {
 }
 
 /**
- * Libera los sockets abiertos por la sonda antes de terminar el proceso.
- * win32: process.exit() con sockets undici abiertos aborta y devuelve 127,
- * borrando el exit code real. Hay que await esto y recién después setear
- * process.exitCode. Errores acá se ignoran a propósito: no cambian el veredicto.
+ * Libera los sockets abiertos antes de terminar el proceso. La llama el
+ * shutdown de src/server.ts (SIGTERM/SIGINT).
+ * win32: process.exit() con sockets undici abiertos aborta y devuelve 127.
+ * Hay que await esto y recién después dejar terminar al proceso. Errores acá
+ * se ignoran a propósito: no cambian el resultado que ya se devolvió.
  */
 export async function closeTransport(): Promise<void> {
   const agents = [...openAgents];

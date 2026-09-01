@@ -123,8 +123,8 @@ export interface UnwrapResult {
 
 /**
  * SAP nombra la respuesta `${operationName}Response`. Si no está, cae a la
- * única clave no-Fault bajo Body y registra el mismatch en meta.json en vez
- * de fallar.
+ * única clave no-Fault bajo Body y devuelve el mismatch en vez de fallar.
+ * Hoy nadie consume ese campo: quedó del probe, que lo volcaba a meta.json.
  */
 export function unwrapBody(node: XmlNode, operationName: string): UnwrapResult {
   const envelope = node.Envelope as XmlNode | undefined;
