@@ -211,9 +211,10 @@ describe('malformed and non-SOAP bodies', () => {
 
   it('well-formed but non-SOAP XML (SAP proprietary <error> on HTTP 200) parses, but unwrapBody rejects it', () => {
     // Forma real observada en un GET ?wsdl: HTTP 200 con este body. Un
-    // cliente que sólo mira el status lo tomaría como éxito.
+    // cliente que sólo mira el status lo tomaría como éxito. El <user> real
+    // que devolvía SAP se reemplazó: es media credencial y el test no lo usa.
     const raw =
-      '<error><user>WSMICTS</user><errorText>WSP Exception caught: something</errorText>' +
+      '<error><user>USUARIO</user><errorText>WSP Exception caught: something</errorText>' +
       '<bindingKey>x</bindingKey></error>';
     const node = parseXml(raw); // XML bien formado, no tira acá
     assert.equal(findFault(node), null); // tampoco hay Fault SOAP
