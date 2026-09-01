@@ -1,8 +1,7 @@
-// Run banner — printed before the first request (design §4, mechanism 5).
-// Deliberately not an interactive prompt: interactive gates in a deadline
-// script get bypassed with `yes |`, and the double-token PROD gate in
-// config.ts already does the real work. This banner is for the human
-// reading the terminal afterward.
+// Banner de inicio, impreso antes del primer request. No es un prompt
+// interactivo: eso se saltea con `yes |`, y el doble token de PROD en
+// config.ts ya hace el trabajo real. Este banner es para quien lee la
+// terminal después.
 
 import type { AppConfig } from '../config.js';
 

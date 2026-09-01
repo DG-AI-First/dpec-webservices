@@ -1,12 +1,8 @@
 #!/usr/bin/env node
 // Composition root: config -> services -> transport -> evidence -> cli.
-// See design §9 "Data flow (end to end)" for the exact step ordering this
-// file implements. The critical invariants, all enforced below:
-//   - request evidence written BEFORE the network call goes out
-//   - response evidence written BEFORE parsing
-//   - SOAP Fault checked BEFORE HTTP-status classification (SOAP 1.1 faults
-//     ride on HTTP 500 — see soap/parser.ts + design §3)
-//   - both services run independently; one failing must never skip the other
+// Invariantes: evidencia de request ANTES del call de red, evidencia de
+// response ANTES de parsear, fault ANTES que status HTTP (los faults SOAP
+// 1.1 viajan en HTTP 500). Ambos servicios corren independientes.
 
 import { loadConfig, ConfigError, type AppConfig } from './config.js';
 import {
@@ -36,11 +32,9 @@ import { buildRunSummary, writeRunSummary, type ServiceResult } from './evidence
 import { printBanner } from './cli/banner.js';
 import { printServiceResult, printFinalVerdict } from './cli/report.js';
 
-// Business-input env vars are NOT part of AppConfig's infra schema (config.ts,
-// design §4) — they were deliberately kept out of the PROD-safety enforcement
-// matrix, which is about WHERE the request goes, not WHAT it asks. Names
-// match spike.mjs verbatim, the only place these were previously read from,
-// so there is exactly one convention for these vars across the whole repo.
+// Vars de negocio fuera del schema de infra de AppConfig (no forman parte de
+// la matriz de seguridad PROD). Nombres iguales a spike.mjs, la única
+// convención para estas vars en todo el repo.
 function env(key: string, fallback = ''): string {
   return (process.env[key] ?? fallback).trim();
 }
@@ -82,8 +76,8 @@ async function runOperation<TInput, TOutput>(
   const evidenceFiles: string[] = [];
   let evidenceWriteError: string | undefined;
 
-  // Written BEFORE the network call — see module header. Happens even in
-  // dry-run mode: the whole point of a dry run is showing what WOULD be sent.
+  // Escrito ANTES del call de red (ver header del módulo). Corre también en
+  // dry-run: mostrar qué se habría mandado es el objetivo del dry run.
   if (runDir) {
     const write = writeRequestEvidence(runDir, index, op.serviceName, xml, secrets);
     if (write.ok && write.path) evidenceFiles.push(write.path);
@@ -109,19 +103,17 @@ async function runOperation<TInput, TOutput>(
     };
   }
 
-  // Invariant: config.ts's resolveCredentials() already throws ConfigError
-  // when !dryRun and user/password are missing, so this can never actually
-  // be null here — narrowed explicitly rather than with `!` so a future
-  // regression in config.ts fails loudly instead of silently.
+  // Invariante: resolveCredentials() en config.ts ya tira ConfigError si
+  // !dryRun y faltan user/password. Angostado explícito (no con `!`) para
+  // fallar ruidoso ante una regresión futura, no en silencio.
   if (config.user === null || config.password === null) {
     throw new Error('Invariant violated: live mode requires resolved credentials.');
   }
   const user = config.user;
   const password = config.password.reveal();
-  // op.soapAction is authoritative, per-operation — see soap/types.ts. There
-  // is no config-level override: DPEC_SOAP_ACTION was removed because the
-  // two mc-style services need "" and ZZCS_INFO_IC_WS needs its own
-  // non-empty value; a single global override cannot be right for both.
+  // op.soapAction es autoritativo por operación. No hay override de config:
+  // DPEC_SOAP_ACTION se sacó porque mc-style necesita '' y ZZCS_INFO_IC_WS
+  // necesita su propio valor no vacío.
   const soapAction = op.soapAction;
 
   const requestHeaders = redactHeaders({
@@ -155,16 +147,16 @@ async function runOperation<TInput, TOutput>(
     elapsedMs = callResult.elapsedMs;
     rawBody = callResult.rawBody;
 
-    // Written BEFORE parsing — see module header.
+    // Escrito ANTES de parsear (ver header del módulo).
     if (runDir) {
       const write = writeResponseEvidence(runDir, index, op.serviceName, rawBody, secrets);
       if (write.ok && write.path) evidenceFiles.push(write.path);
       else if (write.error) evidenceWriteError = evidenceWriteError ?? write.error;
     }
 
-    const parsed = parseXml(rawBody); // throws ParseError on non-well-formed XML
+    const parsed = parseXml(rawBody); // lanza ParseError si el XML no es válido
 
-    // Fault BEFORE status: SOAP 1.1 faults ride on HTTP 500 (design §3).
+    // Fault ANTES que status: los faults SOAP 1.1 viajan en HTTP 500.
     const fault = findFault(parsed);
     if (fault) throw new SoapFaultError(fault.faultCode, fault.faultString);
 
@@ -306,10 +298,9 @@ async function main(): Promise<void> {
 
   printFinalVerdict(summary);
 
-  // Release sockets and let Node end on its own. process.exit() here aborts on
-  // Windows while undici is still closing connections, and the process returns
-  // 127 instead of this code — which would erase the entire answer. See
-  // closeTransport() and test/exit-contract.test.ts.
+  // Libera sockets y deja terminar a Node solo. process.exit() acá aborta en
+  // Windows mientras undici sigue cerrando conexiones y devuelve 127 en vez
+  // de este código. Ver closeTransport() y test/exit-contract.test.ts.
   await closeTransport();
   process.exitCode = exitCode;
 }

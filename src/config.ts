@@ -1,8 +1,6 @@
-// Configuration model. process.env is read ONCE here (via loadConfig) and
-// nowhere else in the codebase — see design §4 "config.ts is read once".
-//
-// The injectable `env` parameter (defaulting to process.env) is what makes
-// the entire PROD-safety enforcement matrix testable with plain objects.
+// Modelo de configuración. process.env se lee UNA sola vez acá (loadConfig)
+// y en ningún otro lugar del repo. El parámetro `env` inyectable es lo que
+// hace testeable con objetos planos toda la matriz de seguridad PROD.
 
 const HOSTS = { qa: 'sapqas.dpec.com.ar', prod: 'sapprd.dpec.com.ar' } as const;
 
@@ -16,9 +14,9 @@ export type TlsMode =
   | { readonly mode: 'insecure' };
 
 /**
- * Branded wrapper so the SAP password cannot leak through a template
- * literal, JSON.stringify(config), or console.log(config). The only way
- * out is the explicit .reveal() call, made once, in soap/transport.ts.
+ * Wrapper con marca para que la contraseña de SAP no se filtre por template
+ * literal, JSON.stringify ni console.log. La única salida es .reveal(),
+ * llamado una vez, en soap/transport.ts.
  */
 export class Secret {
   constructor(private readonly value: string) {}
@@ -67,8 +65,8 @@ export class ConfigError extends Error {
 }
 
 function makeRunId(): string {
-  // Windows forbids ':' in filenames — see design §5. Every consumer of
-  // runId (evidence dir naming) depends on this format already being safe.
+  // Windows prohíbe ':' en nombres de archivo; todo lo que usa runId
+  // depende de que este formato ya sea seguro.
   return new Date().toISOString().replace(/[:.]/g, '-');
 }
 
@@ -144,8 +142,8 @@ function resolveTls(env: NodeJS.ProcessEnv, resolvedEnv: Environment): TlsMode {
   const caFile = trimmed(env, 'DPEC_TLS_CA_FILE');
 
   if (insecureRaw !== undefined && insecureRaw !== '') {
-    // Rung 3 is QA-only, and that is a config-time impossibility under prod —
-    // rejected regardless of value, never a runtime branch that could be missed.
+    // El peldaño 3 es sólo QA: rechazado en config-time bajo prod, nunca una
+    // rama en runtime que se pueda pasar por alto.
     if (resolvedEnv === 'prod') {
       throw new ConfigError(
         'DPEC_TLS_INSECURE cannot be set under DPEC_ENV=prod, regardless of its value.',
@@ -171,7 +169,7 @@ function resolveCredentials(
   dryRun: boolean,
 ): { user: string | null; password: Secret | null } {
   const user = trimmed(env, 'SAP_USER');
-  const password = env.SAP_PASSWORD; // never trim a password — whitespace may be intentional
+  const password = env.SAP_PASSWORD; // nunca trimear password: el espacio puede ser intencional
 
   if (dryRun) {
     return { user: user ?? null, password: password ? new Secret(password) : null };

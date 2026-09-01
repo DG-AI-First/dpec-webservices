@@ -1,9 +1,6 @@
-// Per-service block + final verdict. Must be readable by someone unfamiliar
-// with the code (spec: "Console summary" requirement). Two rules that are
-// easy to get wrong and load-bearing here:
-//   - dry run NEVER reports PASS (design §5)
-//   - an empty result set IS a PASS, with a line telling the reader to
-//     verify the input IDs (design §6, spec "Empty result is success")
+// Bloque por servicio + veredicto final. Dos reglas fáciles de romper:
+//   - un dry run NUNCA reporta PASS
+//   - un resultado vacío ES un PASS, con una línea para verificar los IDs
 
 import type { RunSummary, ServiceResult } from '../evidence/summary.js';
 

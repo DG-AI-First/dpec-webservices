@@ -1,10 +1,9 @@
-// Error taxonomy -> exit codes. See design §6.
-//
-// Exit codes answer "who acts next", not "what broke":
-//   0 both services answered correctly           -> nobody
-//   2 our config/credentials are the problem      -> us (chase credentials)
-//   3 SAP was reached and answered with a fault   -> DPEC
-//   4 we could not get a usable answer out        -> infra/network/TLS
+// Taxonomía de errores -> exit codes. Responden "quién actúa después", no
+// "qué se rompió":
+//   0 ambos servicios respondieron bien          -> nadie
+//   2 el problema es nuestra config/credenciales -> nosotros
+//   3 SAP respondió con un fault                 -> DPEC
+//   4 no se pudo obtener una respuesta usable    -> infra/red/TLS
 
 export type ExitCode = 0 | 2 | 3 | 4;
 
@@ -89,7 +88,7 @@ export class ParseError extends ProbeError {
   }
 }
 
-/** HTTP status -> classification. Returns null for anything that isn't 401/403. */
+/** Status HTTP -> clasificación. null si no es 401/403. */
 export function classifyHttpStatus(status: number): AuthRejectedError | null {
   if (status === 401 || status === 403) {
     return new AuthRejectedError(`Authentication rejected (HTTP ${status})`, status);
@@ -98,9 +97,8 @@ export function classifyHttpStatus(status: number): AuthRejectedError | null {
 }
 
 /**
- * SAP's business-success convention is unverified (design §11, open question #7).
- * Treat an empty code, or an all-zeros code (e.g. "000"), as success. Anything
- * else is a business error, printed verbatim.
+ * La convención de éxito de negocio de SAP es asumida, no confirmada: código
+ * vacío o todo-ceros ("000") es éxito. Cualquier otro es error, verbatim.
  */
 export function classifyBusinessMessage(code: string, text: string): BusinessError | null {
   const normalized = code.trim();
@@ -112,9 +110,8 @@ export function classifyBusinessMessage(code: string, text: string): BusinessErr
 export type Verdict = 'PASS' | 'FAIL';
 
 /**
- * An empty result set is a PASS (design §6) — the absence of rows is a data
- * question, not a service failure. This function never inspects row count;
- * only a genuine business error (SAP itself saying so) can produce FAIL.
+ * Un resultado vacío es PASS: la ausencia de filas es un dato, no una falla
+ * del servicio. Sólo un error de negocio real produce FAIL.
  */
 export function determineVerdict(businessError: BusinessError | null): Verdict {
   return businessError ? 'FAIL' : 'PASS';
@@ -156,9 +153,9 @@ interface NodeErrorLike {
 }
 
 /**
- * Native `fetch` wraps every network failure as `TypeError: fetch failed` —
- * the actionable code is buried in error.cause (sometimes nested two deep,
- * or in cause.errors[] for happy-eyeballs aggregates). Walk the chain.
+ * fetch nativo envuelve toda falla de red como "TypeError: fetch failed": el
+ * código útil está en error.cause (a veces anidado, o en cause.errors[] para
+ * agregados happy-eyeballs). Hay que recorrer la cadena.
  */
 export function diagnoseCause(err: unknown): CauseDiagnosis | null {
   let current: NodeErrorLike | undefined = err as NodeErrorLike;
@@ -189,7 +186,7 @@ export function diagnoseCause(err: unknown): CauseDiagnosis | null {
   return null;
 }
 
-/** Converts any thrown value from a failed fetch() into a classified TransportError. */
+/** Convierte cualquier valor lanzado por un fetch() fallido en un TransportError clasificado. */
 export function toTransportError(err: unknown): TransportError {
   const diagnosis = diagnoseCause(err);
   if (diagnosis) {
@@ -204,10 +201,10 @@ export function toTransportError(err: unknown): TransportError {
 }
 
 /**
- * Both services run independently; one failure must never block the other's
- * evidence. Final exit code by precedence: any 4 -> 4; else any 3 -> 3; else 0.
- * Transport outranks business/fault because an unreachable service tells you
- * nothing about its business behaviour — the unknown is strictly bigger.
+ * Ambos servicios corren independientes; una falla nunca bloquea la
+ * evidencia del otro. Precedencia: cualquier 4 -> 4; si no, cualquier 3 -> 3;
+ * si no, 0. Transport gana porque un servicio inalcanzable no dice nada de
+ * su comportamiento de negocio.
  */
 export function aggregateExitCode(codes: readonly ExitCode[]): ExitCode {
   if (codes.includes(4)) return 4;

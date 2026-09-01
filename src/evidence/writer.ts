@@ -1,8 +1,6 @@
-// Evidence capture to disk. See design §5 — every decision here has a
-// documented "why", most of them Windows-specific (this is a win32 machine).
-//
-// Deliberately NOT unit-tested (design §7: fs writes are the I/O shell,
-// verified by the dry-run and live paths, not by mocking the filesystem).
+// Captura de evidencia a disco. Deliberadamente sin test unitario: los
+// writes a fs son la capa de I/O, verificada por dry-run y por el camino en
+// vivo, no mockeando el filesystem.
 
 import { mkdirSync, writeFileSync, copyFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -11,11 +9,9 @@ import type { RedactedHeaders } from '../soap/types.js';
 const HEADER_DENYLIST = new Set(['authorization', 'proxy-authorization', 'cookie', 'set-cookie']);
 
 /**
- * Redaction is structural, not a filter someone can forget to call: this is
- * the ONLY function that can produce a `RedactedHeaders` value (a branded
- * type — see soap/types.ts), and the evidence writer functions below refuse
- * to accept a raw header map at the type level (design §5, layer 1).
- * Layer 2 is the case-insensitive denylist itself.
+ * La redacción es estructural: ésta es la ÚNICA función que puede producir
+ * un RedactedHeaders (tipo con marca, ver soap/types.ts). Capa 2 es la
+ * denylist case-insensitive en sí.
  */
 export function redactHeaders(headers: Readonly<Record<string, string>>): RedactedHeaders {
   const redacted: Record<string, string> = {};
@@ -26,12 +22,10 @@ export function redactHeaders(headers: Readonly<Record<string, string>>): Redact
 }
 
 /**
- * Layer 3, defense-in-depth (design §5): a literal-substring scrub applied to
- * every serialized evidence string, independent of the header denylist.
- * Justified because a SAP fault or a proxy/logon page can echo the username
- * back in its BODY — observed live: a `?wsdl` GET returned HTTP 200 with a
- * proprietary `<error><user>WSMICTS</user>...</error>` payload. Header
- * redaction alone would have missed that.
+ * Capa 3, defensa en profundidad: scrub por substring literal sobre cada
+ * string de evidencia, independiente de la denylist de headers. Un fault SAP
+ * o una página de logon pueden devolver el username en el BODY: observado en
+ * vivo, un GET a ?wsdl devolvió `<error><user>WSMICTS</user>...</error>`.
  */
 export function scrubSecrets(text: string, secrets: readonly string[]): string {
   let scrubbed = text;
@@ -58,10 +52,9 @@ function safeWrite(path: string, content: string): EvidenceWriteResult {
 }
 
 /**
- * Evidence write failures are best-effort and reported, never fatal (design
- * §5): the probe's primary answer is the SAP verdict, and a full disk must
- * not turn a PASS into a crash. `runId` is assumed already Windows-safe
- * (config.ts's makeRunId already replaces `:`/`.`  with `-`).
+ * Fallas al escribir evidencia son best-effort y no fatales: el veredicto
+ * principal es el de SAP, un disco lleno no debe convertir un PASS en un
+ * crash. `runId` ya viene sanitizado para Windows (makeRunId en config.ts).
  */
 export function createRunDirectory(evidenceDir: string, runId: string): EvidenceWriteResult {
   const runDir = join(evidenceDir, `run-${runId}`);
@@ -78,10 +71,8 @@ function ordinalPrefix(index: number): string {
 }
 
 /**
- * Written BEFORE the network call goes out (design §5, mandatory ordering):
- * if the process dies, hangs, or the network black-holes, the exact
- * attempted bytes still survive on disk. Raw bytes, byte-identical — never
- * re-serialized; scrubSecrets is a targeted literal replace, not reformatting.
+ * Escrito ANTES del call de red: si el proceso muere, cuelga, o la red se
+ * pierde, los bytes exactos que se intentaron mandar sobreviven en disco.
  */
 export function writeRequestEvidence(
   runDir: string,
@@ -94,7 +85,7 @@ export function writeRequestEvidence(
   return safeWrite(path, scrubSecrets(xml, secrets));
 }
 
-/** Written BEFORE parsing (design §5, mandatory ordering) — parse failures must never cost us the raw evidence. */
+/** Escrito ANTES de parsear: una falla de parseo nunca debe costarnos la evidencia cruda. */
 export function writeResponseEvidence(
   runDir: string,
   index: number,
@@ -135,9 +126,8 @@ export function writeMetaEvidence(
 }
 
 /**
- * `latest-summary.json` is a plain COPY, not a symlink: symlinks on Windows
- * need elevated privileges or Developer Mode enabled, and a copy always
- * works regardless of user permissions (design §5).
+ * Copia real, no symlink: los symlinks en Windows piden privilegios elevados
+ * o Developer Mode; una copia siempre funciona.
  */
 export function writeLatestSummaryCopy(evidenceDir: string, summaryPath: string): EvidenceWriteResult {
   const latestPath = join(evidenceDir, 'latest-summary.json');

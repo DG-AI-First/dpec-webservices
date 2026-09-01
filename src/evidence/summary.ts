@@ -1,5 +1,5 @@
-// summary.json assembly. See design §5. Deliberately NOT unit-tested — pure
-// assembly of already-tested data plus fs writes (the I/O shell, design §7).
+// Armado de summary.json. Deliberadamente sin test unitario: ensambla datos
+// ya testeados más escritura a disco (la capa de I/O).
 
 import { join } from 'node:path';
 import { writeFileSync } from 'node:fs';
@@ -55,10 +55,9 @@ export function buildRunSummary(params: {
 }
 
 /**
- * Writes summary.json inside the run directory, then copies it to
- * `evidenceDir/latest-summary.json`. Evidence write failures are best-effort
- * and never fatal (design §5) — if summary.json itself fails to write, the
- * copy step is skipped rather than crashing.
+ * Escribe summary.json en el run directory y lo copia a
+ * evidenceDir/latest-summary.json. Fallas de escritura nunca son fatales:
+ * si summary.json falla, se saltea la copia en vez de crashear.
  */
 export function writeRunSummary(
   evidenceDir: string,
