@@ -75,6 +75,7 @@ Respuesta exitosa de `/api/cliente`:
 ```json
 {
   "partner": "0030002708",
+  "resultado": "0",
   "anlage": "0060002445",
   "status": "...",
   "nombre": "...",
@@ -82,6 +83,10 @@ Respuesta exitosa de `/api/cliente`:
   "deuda": "..."
 }
 ```
+
+`resultado` es `OU_RESULTADO` de `ZZCS_INFO_IC_WS`, verbatim. Es un código sin
+texto (no `{codigo, descripcion}` como `mensajes` más abajo) — ver "Los tres
+servicios SAP".
 
 Es un subconjunto curado a propósito: la fila real de `ZZCS_INFO_IC_WS` trae
 37 campos con domicilio, email y dos teléfonos. Esta API no tiene
@@ -93,6 +98,7 @@ Respuesta exitosa de `/api/deuda`:
 ```json
 {
   "partner": "0030002708",
+  "mensajes": [],
   "documentos": [
     {
       "budat": "2016-07-06",
@@ -107,8 +113,20 @@ Respuesta exitosa de `/api/deuda`:
 }
 ```
 
+`mensajes` es el `PoMensaje` que devolvió SAP (`ZFicaDeudaIcUnif`), mapeado
+verbatim a `{codigo, descripcion}` — nunca `null` ni ausente, siempre un
+array (vacío cuando SAP no mandó nada). Un `200` con `documentos: []` y
+`mensajes: [{"codigo": "001", "descripcion": "No se registra deuda"}]` es SAP
+diciendo explícitamente "esta cuenta está al día": es una respuesta, no una
+falla. Antes de este campo esos dos casos (cuenta sin deuda vs. algo roto)
+eran indistinguibles para quien llama a la API. El PDF de integración de DPEC
+muestra un ejemplo con dos entradas en `PoMensaje`; por eso `mensajes` mapea
+todas, no sólo la primera.
+
 `/api/facturas` devuelve la misma forma con la clave `facturas` en lugar de
-`documentos`, y filas de `{ opbel, exbel, faedn, totalAmnt }`.
+`documentos`, y filas de `{ opbel, exbel, faedn, totalAmnt }`. Su `mensajes`
+sale de `EMsgnro`/`EMsgtxt` (`ZWsSap002`), normalizado al mismo shape: cero
+entradas si ambos vienen vacíos, una entrada si no.
 
 **Todos los valores numéricos viajan como string, a propósito.** `partner` y
 `xblnr` tienen ceros a la izquierda que un `number` destruiría, y el código de
@@ -348,7 +366,7 @@ curl "http://127.0.0.1:3000/api/facturas?partner=0030002708&anlage=0060002445"
 | Origen | Valores | Estado |
 |---|---|---|
 | DNI de prueba | `DNI 30955882` → `PARTNER 0030002708`, `ANLAGE 0060002445` | **Verificado en vivo contra QA el 2026-09-01**: `/api/deuda` devuelve 1 factura impaga de $26,58. Cliente **desconectado desde 2012**, así que `/api/facturas` responde `409 E9011`. **Atención:** la consulta a `ZZCS_INFO_IC_WS` devuelve nombre y domicilio reales — este DNI puede corresponder a una persona real si QA es copia de producción, no asumas que es un dato inventado. |
-| PDF de integración de DPEC, `Z_FICA_DEUDA_IC_UNIF` | `PiIc=0010084414` | **Verificado contra QA el 2026-09-01: `200` con `documentos: []`.** El interlocutor existe en QA (no da error), pero no tiene deuda. El PDF muestra 3 documentos porque sus ejemplos son de PRODUCCIÓN. |
+| PDF de integración de DPEC, `Z_FICA_DEUDA_IC_UNIF` | `PiIc=0010084414` | **Verificado contra QA el 2026-09-01: `200` con `documentos: []` y `mensajes: [{"codigo":"001","descripcion":"No se registra deuda"}]`.** El interlocutor existe en QA (no da error) y SAP confirma explícitamente que no tiene deuda. El PDF muestra 3 documentos porque sus ejemplos son de PRODUCCIÓN. |
 | PDF de integración de DPEC, `Z_WS_SAP_002` | `IAnlage=0010099044`, `IPartner=0010099044`, `ICantfact=1` | **Verificado contra QA el 2026-09-01: `200` con 1 factura** (`opbel 001034259703`, vto. 2025-09-03, $215.242,78). El PDF dice $324.071,45 porque es el dato de PRODUCCIÓN: los identificadores son los mismos, los importes no. |
 
 Los dos valores del PDF, como curl (para probarlos de una sola pasada):
