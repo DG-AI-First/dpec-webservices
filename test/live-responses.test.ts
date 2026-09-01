@@ -1,6 +1,9 @@
-// Authoritative fixtures: three real QA responses, captured at HTTP 200 on
-// 2026-08-28 by `npm run probe`. Everything else in this suite tests our
-// assumptions; this file tests SAP's actual behaviour.
+// Authoritative fixtures: four real QA responses, captured at HTTP 200 —
+// three via `npm run probe` on 2026-08-28, plus the ZZCS_INFO_IC_WS response
+// captured 2026-09-01 with a dedicated throwaway script (deleted after use,
+// never committed) built from this repo's own buildEnvelope/callSoap.
+// Everything else in this suite tests our assumptions; this file tests
+// SAP's actual behaviour.
 //
 // PRIVACY: document numbers, invoice references, barcodes and the digits
 // inside the error text are digit-scrambled through a fixed permutation of
@@ -10,6 +13,16 @@
 // places and signs are preserved for the same reason. Dates and amounts are
 // untouched (they identify no one). The unmodified originals stay in
 // evidence/, which is gitignored.
+//
+// ZZCS_INFO_IC_WS's response additionally carries a real customer's name and
+// home address (NAME1_TEXT, STREET_IC/IN, HOUSE_NUM1_IC/IN, CITY1_IC/IN,
+// POST_CODE1_IC/IN) — fields the two mc-style services never return. Those
+// are REDACTED outright (`[REDACTED ...]`), not scrambled: a name or street
+// has no "leading zeros" property worth preserving, and scrambling letters
+// would not remove the identifying value the way it does for a digit string.
+// PARTNER, ANLAGE, IDNUMBER_DNI and ABLEINH still follow the digit-scramble
+// rule above, since their string-fidelity (leading zeros, length) is exactly
+// what these tests exist to defend.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,6 +30,7 @@ import { readFileSync } from 'node:fs';
 import { parseXml, unwrapBody, findFault } from '../src/soap/parser.js';
 import * as fica from '../src/services/zFicaDeudaIcUnif.js';
 import * as ws002 from '../src/services/zWsSap002.js';
+import * as zzcs from '../src/services/zzcsInfoIcWs.js';
 
 function load(name: string): string {
   return readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
@@ -113,5 +127,61 @@ describe('ZWsSap002 — real QA business error carried on HTTP 200', () => {
     assert.equal(outcome.recordCount, 0);
     assert.equal(outcome.businessMessage[0]?.code, 'ZFICA017');
     assert.match(outcome.businessMessage[0]?.text ?? '', /diferente a recibida por par/);
+  });
+});
+
+describe('ZZCS_INFO_IC_WS — real QA response for DNI 30955882 (captured 2026-09-01)', () => {
+  const raw = load('zzcsInfoIcWs.response.xml');
+  const parse = () => zzcs.parseResult(unwrapBody(parseXml(raw), 'ZZCS_INFO_IC_WS').node);
+
+  it('carries no SOAP fault and unwraps by the expected element name', () => {
+    const node = parseXml(raw);
+    assert.equal(findFault(node), null);
+    assert.equal(unwrapBody(node, 'ZZCS_INFO_IC_WS').responseElementMismatch, undefined);
+  });
+
+  it('parses one row out of the item-wrapped OU_INFO_IC_WS table', () => {
+    assert.equal(parse().rows.length, 1);
+  });
+
+  it('PARTNER and ANLAGE keep their leading zeros as 10-character strings', () => {
+    const row = parse().rows[0];
+    assert.equal(typeof row?.partner, 'string');
+    assert.equal(row?.partner.length, 10);
+    assert.match(row?.partner ?? '', /^0/);
+    assert.equal(typeof row?.anlage, 'string');
+    assert.equal(row?.anlage.length, 10);
+    assert.match(row?.anlage ?? '', /^0/);
+  });
+
+  it('IDNUMBER_DNI survives as an 8-digit string, not a number', () => {
+    const idnumberDni = parse().rows[0]?.idnumberDni ?? '';
+    assert.equal(typeof idnumberDni, 'string');
+    assert.equal(idnumberDni.length, 8);
+  });
+
+  it('STATUS, FACT_ADEUDADAS and DEUDA are the fields the API mainly needs', () => {
+    const row = parse().rows[0];
+    assert.equal(row?.status, 'DESCONECTADO');
+    assert.equal(row?.factAdeudadas, '001');
+    assert.equal(row?.deuda, '26.58');
+  });
+
+  it('OU_RESULTADO is "0" — the only observed value, and it is not zero-padded away', () => {
+    assert.equal(parse().ouResultado, '0');
+  });
+
+  it('summarizes as PASS with recordCount 1', () => {
+    const outcome = zzcs.summarize(parse());
+    assert.equal(outcome.verdict, 'PASS');
+    assert.equal(outcome.recordCount, 1);
+    assert.deepEqual(outcome.businessMessage, []);
+  });
+
+  it('the redacted name and address fields carry no real customer data', () => {
+    const row = parse().rows[0];
+    assert.match(row?.name1Text ?? '', /^\[REDACTED/);
+    assert.match(row?.streetIc ?? '', /^\[REDACTED/);
+    assert.match(row?.city1Ic ?? '', /^\[REDACTED/);
   });
 });
