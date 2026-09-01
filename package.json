@@ -2,7 +2,7 @@
   "name": "dpec-sap-soap-client",
   "version": "0.1.0",
   "private": true,
-  "description": "HTTP API over DPEC's SAP SOAP services (deuda/facturas por DNI), plus the original standalone diagnostic probe that produces disk evidence + a machine-checkable exit code.",
+  "description": "HTTP API over DPEC's SAP SOAP services (deuda/facturas por DNI).",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -10,8 +10,6 @@
   "scripts": {
     "check": "tsc --noEmit",
     "test": "node --import tsx --test \"test/**/*.test.ts\"",
-    "dry": "node --import tsx --env-file-if-exists=.env scripts/dry-run.mjs",
-    "probe": "node --import tsx --env-file-if-exists=.env src/index.ts",
     "start": "node --import tsx --env-file-if-exists=.env src/server.ts"
   },
   "dependencies": {

@@ -1,6 +1,6 @@
 // Test de integración del server HTTP: node:http real contra un puerto
 // efímero, con un stub SOAP también de node:http (misma técnica que
-// test/exit-contract.test.ts usa para su stub). Sin red real.
+// test/transport.test.ts usa para su stub). Sin red real.
 //
 // callOperationLive.ts no tiene test unitario propio (mismo criterio que
 // soap/transport.ts: es la capa de I/O) -- se ejerce acá, en vivo contra el stub.

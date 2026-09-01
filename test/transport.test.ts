@@ -1,11 +1,11 @@
-// El exit code es el valor central de esta herramienta: dice de qué lado
-// está el problema. win32 real: process.exit() con sockets undici abiertos
-// tira "Assertion failed: ...UV_HANDLE_CLOSING" y sale 127 en vez del código
-// calculado — un CI no puede distinguir "DPEC falló" de "esto se rompió".
+// closeTransport() es crítico para el shutdown gradual del server HTTP
+// (src/server.ts): sin liberar los sockets de undici, process.exit() en
+// win32 aborta con "Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)".
+// Antes cubría el mismo contrato para el probe CLI; ahora es el server quien
+// depende de esto en SIGTERM/SIGINT.
 
 import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import { callSoap, closeTransport } from '../src/soap/transport.js';
 
@@ -80,26 +80,5 @@ describe('transport teardown', () => {
   test('closeTransport is safe to call twice', async () => {
     await closeTransport();
     await closeTransport();
-  });
-});
-
-describe('process exit contract', () => {
-  function runDry() {
-    return spawnSync(process.execPath, ['--import', 'tsx', 'scripts/dry-run.mjs'], {
-      encoding: 'utf8',
-      // Deliberadamente sin credenciales: un dry run debe andar sin ellas.
-      env: { ...process.env, SAP_USER: '', SAP_PASSWORD: '' },
-      timeout: 60_000,
-    });
-  }
-
-  test('dry run exits with its computed code, not a crash code', () => {
-    assert.equal(runDry().status, 0);
-  });
-
-  test('no libuv assertion, no signal kill', () => {
-    const { stderr, signal } = runDry();
-    assert.ok(!/Assertion failed/i.test(stderr), `crashed while exiting:\n${stderr}`);
-    assert.equal(signal, null);
   });
 });
