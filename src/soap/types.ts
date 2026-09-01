@@ -10,23 +10,6 @@ export interface WireField {
   readonly value: string;
 }
 
-/**
- * Tipo con marca: sólo redactHeaders() (evidence/writer.ts) puede producirlo.
- * El evidence writer no acepta un mapa de headers crudo a nivel de tipos.
- */
-export type RedactedHeaders = Record<string, string> & { readonly __redacted: unique symbol };
-
-export interface SoapCallRecord {
-  url: string;
-  requestXml: string;
-  requestHeaders: RedactedHeaders;
-  httpStatus: number | null;
-  responseXml: string | null;
-  responseHeaders: Record<string, string> | null;
-  startedAt: string;
-  elapsedMs: number;
-}
-
 export interface ServiceOutcome {
   readonly recordCount: number;
   readonly businessMessage: ReadonlyArray<{ code: string; text: string }>;
