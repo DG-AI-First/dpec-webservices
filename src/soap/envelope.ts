@@ -34,12 +34,22 @@ export function escapeXml(value: string): string {
     .replace(/'/g, '&apos;');
 }
 
-/** All declared fields are always emitted, empty when unset — matches the known-good capture. */
+/**
+ * All declared fields are always emitted, empty when unset.
+ *
+ * Children are UNQUALIFIED — no `urn:` prefix — and that is not a style
+ * choice. Neither service's WSDL declares `elementFormDefault`, so XML Schema
+ * defaults it to "unqualified": only the operation element itself lives in
+ * the mc-style namespace, its children live in no namespace at all. Prefixing
+ * them puts every parameter in a namespace SAP is not looking in, and SAP
+ * answers HTTP 500 with a generic "Error en el tratamiento de servicio web"
+ * that names nothing. Verified live against QA on 2026-08-28.
+ */
 export function serializeFields(fields: readonly WireField[]): string {
   return fields
     .map(({ name, value }) => {
       assertWireName(name);
-      return `      <urn:${name}>${escapeXml(value)}</urn:${name}>`;
+      return `      <${name}>${escapeXml(value)}</${name}>`;
     })
     .join('\n');
 }

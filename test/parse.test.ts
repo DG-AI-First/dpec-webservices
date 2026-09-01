@@ -26,7 +26,7 @@ describe('toArray — direct unit cases', () => {
     assert.deepEqual(toArray(''), []);
   });
 
-  it('empty object -> [] (<tFact></tFact>, element not in the isArray allowlist)', () => {
+  it('empty object -> [] (<TFact></TFact>, element not in the isArray allowlist)', () => {
     assert.deepEqual(toArray({}), []);
   });
 
@@ -39,25 +39,25 @@ describe('toArray — direct unit cases', () => {
   });
 
   it('a single scalar object -> one-element array', () => {
-    assert.deepEqual(toArray({ eAnlage: '1' }), [{ eAnlage: '1' }]);
+    assert.deepEqual(toArray({ Opbel: '1' }), [{ Opbel: '1' }]);
   });
 
   it('a flat array of 3 rows -> unchanged, length 3', () => {
-    const rows = [{ eAnlage: '1' }, { eAnlage: '2' }, { eAnlage: '3' }];
+    const rows = [{ Opbel: '1' }, { Opbel: '2' }, { Opbel: '3' }];
     assert.deepEqual(toArray(rows), rows);
   });
 
   it('item-wrapped single value ({item: [...]}) unwraps to the inner rows', () => {
-    const wrapped = { item: [{ eAnlage: '1' }, { eAnlage: '2' }] };
-    assert.deepEqual(toArray(wrapped), [{ eAnlage: '1' }, { eAnlage: '2' }]);
+    const wrapped = { item: [{ Opbel: '1' }, { Opbel: '2' }] };
+    assert.deepEqual(toArray(wrapped), [{ Opbel: '1' }, { Opbel: '2' }]);
   });
 
   it('item-wrapped-inside-array ([{item: [...]}]) unwraps to the inner rows (the real SAP shape)', () => {
     // This is the actual shape fast-xml-parser produces for a single
-    // <tFact><item>...</item><item>...</item></tFact> container when
-    // 'tFact' is itself in the isArray allowlist.
-    const wrapped = [{ item: [{ eAnlage: '1' }, { eAnlage: '2' }] }];
-    assert.deepEqual(toArray(wrapped), [{ eAnlage: '1' }, { eAnlage: '2' }]);
+    // <TFact><item>...</item><item>...</item></TFact> container when
+    // 'TFact' is itself in the isArray allowlist.
+    const wrapped = [{ item: [{ Opbel: '1' }, { Opbel: '2' }] }];
+    assert.deepEqual(toArray(wrapped), [{ Opbel: '1' }, { Opbel: '2' }]);
   });
 });
 
@@ -68,50 +68,50 @@ describe('toArray — direct unit cases', () => {
 describe('toArray — integration through parseXml (real fast-xml-parser output)', () => {
   function tFactRows(xml: string): unknown[] {
     const node = parseXml(xml) as any;
-    return toArray(node.Envelope.Body.ZWsSap002Response.tFact);
+    return toArray(node.Envelope.Body.ZWsSap002Response.TFact);
   }
 
-  it('0 rows: self-closed <tFact/>', () => {
+  it('0 rows: self-closed <TFact/>', () => {
     const xml =
-      '<Envelope><Body><ZWsSap002Response><tFact/></ZWsSap002Response></Body></Envelope>';
+      '<Envelope><Body><ZWsSap002Response><TFact/></ZWsSap002Response></Body></Envelope>';
     assert.equal(tFactRows(xml).length, 0);
   });
 
-  it('0 rows: empty <tFact></tFact>', () => {
+  it('0 rows: empty <TFact></TFact>', () => {
     const xml =
-      '<Envelope><Body><ZWsSap002Response><tFact></tFact></ZWsSap002Response></Body></Envelope>';
+      '<Envelope><Body><ZWsSap002Response><TFact></TFact></ZWsSap002Response></Body></Envelope>';
     assert.equal(tFactRows(xml).length, 0);
   });
 
-  it('1 row: single <tFact>', () => {
+  it('1 row: single <TFact>', () => {
     const xml =
-      '<Envelope><Body><ZWsSap002Response><tFact><eAnlage>1</eAnlage></tFact></ZWsSap002Response></Body></Envelope>';
+      '<Envelope><Body><ZWsSap002Response><TFact><Opbel>1</Opbel></TFact></ZWsSap002Response></Body></Envelope>';
     assert.equal(tFactRows(xml).length, 1);
   });
 
-  it('3 rows: flat, repeated <tFact> siblings', () => {
+  it('3 rows: flat, repeated <TFact> siblings', () => {
     const xml = `<Envelope><Body><ZWsSap002Response>
-      <tFact><eAnlage>1</eAnlage></tFact>
-      <tFact><eAnlage>2</eAnlage></tFact>
-      <tFact><eAnlage>3</eAnlage></tFact>
+      <TFact><Opbel>1</Opbel></TFact>
+      <TFact><Opbel>2</Opbel></TFact>
+      <TFact><Opbel>3</Opbel></TFact>
     </ZWsSap002Response></Body></Envelope>`;
     assert.equal(tFactRows(xml).length, 3);
   });
 
   it('3 rows: item-wrapped RFC table variant', () => {
     const xml = `<Envelope><Body><ZWsSap002Response>
-      <tFact>
-        <item><eAnlage>1</eAnlage></item>
-        <item><eAnlage>2</eAnlage></item>
-        <item><eAnlage>3</eAnlage></item>
-      </tFact>
+      <TFact>
+        <item><Opbel>1</Opbel></item>
+        <item><Opbel>2</Opbel></item>
+        <item><Opbel>3</Opbel></item>
+      </TFact>
     </ZWsSap002Response></Body></Envelope>`;
     assert.equal(tFactRows(xml).length, 3);
   });
 
   it('1 row: item-wrapped with a single <item>', () => {
     const xml = `<Envelope><Body><ZWsSap002Response>
-      <tFact><item><eAnlage>1</eAnlage></item></tFact>
+      <TFact><item><Opbel>1</Opbel></item></TFact>
     </ZWsSap002Response></Body></Envelope>`;
     assert.equal(tFactRows(xml).length, 1);
   });
@@ -127,37 +127,37 @@ describe('namespace and value-fidelity resilience', () => {
     <${prefix}Envelope xmlns:${prefix.replace(':', '')}="http://schemas.xmlsoap.org/soap/envelope/">
       <${prefix}Body>
         <ZWsSap002Response>
-          <exbel>0090001234</exbel>
-          <totalAmnt>1234.50</totalAmnt>
+          <Exbel>0090001234</Exbel>
+          <TotalAmnt>1234.50</TotalAmnt>
         </ZWsSap002Response>
       </${prefix}Body>
     </${close}Envelope>`;
 
   it('n0: prefix', () => {
     const node = parseXml(bodyFor('n0:')) as any;
-    assert.equal(node.Envelope.Body.ZWsSap002Response.exbel, '0090001234');
+    assert.equal(node.Envelope.Body.ZWsSap002Response.Exbel, '0090001234');
   });
 
   it('SOAP-ENV: prefix', () => {
     const node = parseXml(bodyFor('SOAP-ENV:')) as any;
-    assert.equal(node.Envelope.Body.ZWsSap002Response.exbel, '0090001234');
+    assert.equal(node.Envelope.Body.ZWsSap002Response.Exbel, '0090001234');
   });
 
   it('bare, no prefix', () => {
     const node = parseXml(bodyFor('')) as any;
-    assert.equal(node.Envelope.Body.ZWsSap002Response.exbel, '0090001234');
+    assert.equal(node.Envelope.Body.ZWsSap002Response.Exbel, '0090001234');
   });
 
-  it('exbel with leading zeros survives as a string, not coerced to a number', () => {
+  it('Exbel with leading zeros survives as a string, not coerced to a number', () => {
     const node = parseXml(bodyFor('')) as any;
-    assert.equal(typeof node.Envelope.Body.ZWsSap002Response.exbel, 'string');
-    assert.equal(node.Envelope.Body.ZWsSap002Response.exbel, '0090001234');
+    assert.equal(typeof node.Envelope.Body.ZWsSap002Response.Exbel, 'string');
+    assert.equal(node.Envelope.Body.ZWsSap002Response.Exbel, '0090001234');
   });
 
-  it('totalAmnt decimal survives as a string, round-trips exactly', () => {
+  it('TotalAmnt decimal survives as a string, round-trips exactly', () => {
     const node = parseXml(bodyFor('')) as any;
-    assert.equal(typeof node.Envelope.Body.ZWsSap002Response.totalAmnt, 'string');
-    assert.equal(node.Envelope.Body.ZWsSap002Response.totalAmnt, '1234.50');
+    assert.equal(typeof node.Envelope.Body.ZWsSap002Response.TotalAmnt, 'string');
+    assert.equal(node.Envelope.Body.ZWsSap002Response.TotalAmnt, '1234.50');
   });
 });
 
@@ -196,7 +196,7 @@ describe('findFault', () => {
   });
 
   it('returns null when there is no fault', () => {
-    const raw = '<Envelope><Body><ZWsSap002Response><tFact/></ZWsSap002Response></Body></Envelope>';
+    const raw = '<Envelope><Body><ZWsSap002Response><TFact/></ZWsSap002Response></Body></Envelope>';
     assert.equal(findFault(parseXml(raw)), null);
   });
 });
@@ -234,14 +234,14 @@ describe('malformed and non-SOAP bodies', () => {
 // ---------------------------------------------------------------------------
 describe('unwrapBody', () => {
   it('finds the exact ${operationName}Response element', () => {
-    const raw = '<Envelope><Body><ZWsSap002Response><tFact/></ZWsSap002Response></Body></Envelope>';
+    const raw = '<Envelope><Body><ZWsSap002Response><TFact/></ZWsSap002Response></Body></Envelope>';
     const { node, responseElementMismatch } = unwrapBody(parseXml(raw), 'ZWsSap002');
     assert.ok(node);
     assert.equal(responseElementMismatch, undefined);
   });
 
   it('falls back to the single non-Fault key and records the mismatch', () => {
-    const raw = '<Envelope><Body><UnexpectedName><tFact/></UnexpectedName></Body></Envelope>';
+    const raw = '<Envelope><Body><UnexpectedName><TFact/></UnexpectedName></Body></Envelope>';
     const { responseElementMismatch } = unwrapBody(parseXml(raw), 'ZWsSap002');
     assert.equal(responseElementMismatch, 'UnexpectedName');
   });

@@ -8,7 +8,10 @@ import { XMLParser, XMLValidator } from 'fast-xml-parser';
 import type { XmlNode } from './types.js';
 import { ParseError } from '../errors.js';
 
-const LIST_ELEMENTS = new Set(['poDocumentos', 'poMensaje', 'tFact', 'item']);
+// Wire names, PascalCase, straight from the WSDLs in test/fixtures/.
+// `removeNSPrefix` strips prefixes; it does NOT change case. A camelCase
+// entry here silently matches nothing and every table reads as empty.
+const LIST_ELEMENTS = new Set(['PoDocumentos', 'PoMensaje', 'TFact', 'item']);
 
 export const parser = new XMLParser({
   ignoreAttributes: false,

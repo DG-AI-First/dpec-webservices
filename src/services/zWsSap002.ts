@@ -3,9 +3,13 @@
 // /summarize are pure functions of data in, data out — 100% unit-testable
 // with zero mocking (test/zWsSap002.test.ts).
 //
-// Field order below matches the live-captured request envelope verbatim
-// (evidence/spike-2026-08-27T01-38-39-308Z/facturas.request.xml) — see
-// design §2 "field order is the array order and matches the capture".
+// Field order and every wire name below come from the QA WSDL, promoted to
+// test/fixtures/ws002.wsdl.xml — not from DPEC's integration PDF, which was
+// written from a .NET proxy class and is wrong about both case and content.
+//   ZWsSap002          :: IAnlage, ICantfact, IPartner
+//   ZWsSap002Response  :: EMsgnro, EMsgtxt, TFact
+//   ZsficaFacturas     :: Opbel, Exbel, Faedn, TotalAmnt   (no EAnlage exists)
+//   ZtficaFacturas     :: item                             (rows always wrapped)
 
 import type { WireField, XmlNode, SoapOperation, ServiceOutcome } from '../soap/types.js';
 import { toArray, extractText } from '../soap/parser.js';
@@ -18,7 +22,7 @@ export interface ZWsSap002Input {
 }
 
 export interface TFactRow {
-  readonly eAnlage: string;
+  readonly opbel: string;
   readonly exbel: string;
   readonly faedn: string;
   readonly totalAmnt: string;
@@ -43,17 +47,17 @@ export function buildFields(input: ZWsSap002Input): WireField[] {
  * (unwrapBody, soap/parser.ts) — this function never sees Envelope/Body.
  */
 export function parseResult(responseNode: XmlNode): ZWsSap002Output {
-  const rows = toArray<XmlNode>(responseNode.tFact);
+  const rows = toArray<XmlNode>(responseNode.TFact);
   const tFact: TFactRow[] = rows.map((row) => ({
-    eAnlage: extractText(row.eAnlage),
-    exbel: extractText(row.exbel),
-    faedn: extractText(row.faedn),
-    totalAmnt: extractText(row.totalAmnt),
+    opbel: extractText(row.Opbel),
+    exbel: extractText(row.Exbel),
+    faedn: extractText(row.Faedn),
+    totalAmnt: extractText(row.TotalAmnt),
   }));
 
   return {
-    eMsgnro: extractText(responseNode.eMsgnro),
-    eMsgtxt: extractText(responseNode.eMsgtxt),
+    eMsgnro: extractText(responseNode.EMsgnro),
+    eMsgtxt: extractText(responseNode.EMsgtxt),
     tFact,
   };
 }
@@ -81,7 +85,7 @@ export function summarize(output: ZWsSap002Output): ServiceOutcome {
 export const zWsSap002: SoapOperation<ZWsSap002Input, ZWsSap002Output> = {
   serviceName: 'z-ws-sap-002',
   operationName: 'ZWsSap002',
-  namespace: 'urn:sap-com:document:sap:rfc:functions',
+  namespace: 'urn:sap-com:document:sap:soap:functions:mc-style',
   endpointPath: '/sap/bc/srt/rfc/sap/z_ws_sap_002/100/z_ws_sap_002/z_ws_sap_002',
   soapAction: '',
   buildFields,

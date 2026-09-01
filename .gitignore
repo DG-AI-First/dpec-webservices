@@ -10,3 +10,7 @@ evidence/*
 
 node_modules/
 dist/
+
+# Agent tooling — local state, not part of the deliverable
+.atl/
+.engram/

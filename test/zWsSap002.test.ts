@@ -1,14 +1,20 @@
-// TDD RED-first for src/services/zWsSap002.ts — see design §1 (services/ know
+// Unit tests for src/services/zWsSap002.ts — see design §1 (services/ know
 // nothing about fetch/TLS/files/console, so parseResult/summarize are pure
 // functions, 100% unit-testable with zero mocking).
 //
-// HONEST CONSTRAINT: no real successful ZWsSap002 response has ever been
-// observed (DPEC's binding is unconfigured in QA — see obs #921). These
-// fixtures are RECONSTRUCTED from the design's field list (§10) and the
-// live-captured request envelope (evidence/spike-2026-08-27T01-38-39-308Z),
-// not captured from a real success response. Named follow-up: promote real
-// evidence/**/*.response.xml into fixtures here after the first live PASS
-// (design §7 "Honest limitation").
+// Wire names below come from the QA WSDL, promoted to test/fixtures/ws002.wsdl.xml.
+// They are PascalCase, and `removeNSPrefix` does NOT change case — reading
+// `responseNode.tFact` when the wire says `TFact` yields undefined, which
+// toArray() turns into a perfectly plausible empty result. That silent
+// wrong answer is exactly what these names exist to prevent.
+//
+// The row type is ZsficaFacturas :: Opbel, Exbel, Faedn, TotalAmnt. There is
+// no EAnlage — an earlier reconstruction from DPEC's PDF invented one.
+//
+// HONEST CONSTRAINT: still no real successful ZWsSap002 response. With empty
+// IAnlage/IPartner the RFC runs past DPEC's 60s nginx timeout (HTTP 504), so
+// exercising it needs QA test data from DPEC. Promote a real response here
+// the moment one arrives.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,7 +22,7 @@ import { parseXml, unwrapBody } from '../src/soap/parser.js';
 import { buildFields, parseResult, summarize } from '../src/services/zWsSap002.js';
 
 describe('zWsSap002.buildFields', () => {
-  it('emits IAnlage, ICantfact, IPartner in capture order (design §2 field order)', () => {
+  it('emits IAnlage, ICantfact, IPartner in WSDL sequence order', () => {
     const fields = buildFields({ iAnlage: '0010099044', iCantfact: '10', iPartner: '0010099046' });
     assert.deepEqual(fields, [
       { name: 'IAnlage', value: '0010099044' },
@@ -24,46 +30,55 @@ describe('zWsSap002.buildFields', () => {
       { name: 'IPartner', value: '0010099046' },
     ]);
   });
+
+  it('does NOT emit TFact: unlike ZFicaDeudaIcUnif, the ZWsSap002 input element has no output table', () => {
+    const names = buildFields({ iAnlage: '', iCantfact: '10', iPartner: '' }).map((f) => f.name);
+    assert.deepEqual(names, ['IAnlage', 'ICantfact', 'IPartner']);
+  });
 });
 
-describe('zWsSap002.parseResult — tFact row counts (0/1/3), reconstructed fixtures', () => {
+describe('zWsSap002.parseResult — PascalCase wire names, TFact row counts', () => {
   function parse(bodyXml: string) {
     const raw = `<Envelope><Body><ZWsSap002Response>${bodyXml}</ZWsSap002Response></Body></Envelope>`;
     const { node } = unwrapBody(parseXml(raw), 'ZWsSap002');
     return parseResult(node);
   }
 
-  it('0 rows: self-closed <tFact/>, eMsgnro/eMsgtxt present', () => {
-    const out = parse('<eMsgnro>000</eMsgnro><eMsgtxt>OK</eMsgtxt><tFact/>');
+  it('0 rows: self-closed <TFact/>, EMsgnro/EMsgtxt present', () => {
+    const out = parse('<EMsgnro>000</EMsgnro><EMsgtxt>OK</EMsgtxt><TFact/>');
     assert.equal(out.eMsgnro, '000');
     assert.equal(out.eMsgtxt, 'OK');
     assert.deepEqual(out.tFact, []);
   });
 
-  it('1 row: leading-zero exbel and decimal totalAmnt survive as strings', () => {
+  it('1 row, item-wrapped (ZtficaFacturas is a table of <item>): leading zeros and decimals survive as strings', () => {
     const out = parse(
-      '<eMsgnro></eMsgnro><eMsgtxt></eMsgtxt>' +
-        '<tFact><eAnlage>0010099044</eAnlage><exbel>0090001234</exbel>' +
-        '<faedn>2026-09-15</faedn><totalAmnt>1234.50</totalAmnt></tFact>',
+      '<EMsgnro></EMsgnro><EMsgtxt></EMsgtxt>' +
+        '<TFact><item><Opbel>000000123456</Opbel><Exbel>0090001234</Exbel>' +
+        '<Faedn>2026-09-15</Faedn><TotalAmnt>1234.50</TotalAmnt></item></TFact>',
     );
     assert.equal(out.tFact.length, 1);
+    assert.equal(out.tFact[0]?.opbel, '000000123456');
     assert.equal(out.tFact[0]?.exbel, '0090001234');
     assert.equal(out.tFact[0]?.totalAmnt, '1234.50');
     assert.equal(typeof out.tFact[0]?.exbel, 'string');
   });
 
-  it('3 rows: flat repeated <tFact> siblings', () => {
-    const out = parse(
-      '<eMsgnro></eMsgnro><eMsgtxt></eMsgtxt>' +
-        '<tFact><eAnlage>1</eAnlage><exbel>a</exbel><faedn>d1</faedn><totalAmnt>1.00</totalAmnt></tFact>' +
-        '<tFact><eAnlage>2</eAnlage><exbel>b</exbel><faedn>d2</faedn><totalAmnt>2.00</totalAmnt></tFact>' +
-        '<tFact><eAnlage>3</eAnlage><exbel>c</exbel><faedn>d3</faedn><totalAmnt>3.00</totalAmnt></tFact>',
-    );
+  it('3 rows: item-wrapped RFC table', () => {
+    const row = (n: string) =>
+      `<item><Opbel>${n}</Opbel><Exbel>e${n}</Exbel><Faedn>d${n}</Faedn><TotalAmnt>${n}.00</TotalAmnt></item>`;
+    const out = parse(`<EMsgnro></EMsgnro><EMsgtxt></EMsgtxt><TFact>${row('1')}${row('2')}${row('3')}</TFact>`);
     assert.equal(out.tFact.length, 3);
     assert.deepEqual(
-      out.tFact.map((r) => r.eAnlage),
+      out.tFact.map((r) => r.opbel),
       ['1', '2', '3'],
     );
+  });
+
+  it('camelCase wire names are NOT accepted — the pre-WSDL bug must stay dead', () => {
+    const out = parse('<eMsgnro>000</eMsgnro><eMsgtxt>OK</eMsgtxt><tFact><item><Opbel>1</Opbel></item></tFact>');
+    assert.equal(out.eMsgnro, '');
+    assert.deepEqual(out.tFact, []);
   });
 });
 
@@ -89,9 +104,9 @@ describe('zWsSap002.summarize', () => {
 
   it('3 rows + success code -> PASS with recordCount 3', () => {
     const rows = [
-      { eAnlage: '1', exbel: 'a', faedn: 'd1', totalAmnt: '1.00' },
-      { eAnlage: '2', exbel: 'b', faedn: 'd2', totalAmnt: '2.00' },
-      { eAnlage: '3', exbel: 'c', faedn: 'd3', totalAmnt: '3.00' },
+      { opbel: '1', exbel: 'a', faedn: 'd1', totalAmnt: '1.00' },
+      { opbel: '2', exbel: 'b', faedn: 'd2', totalAmnt: '2.00' },
+      { opbel: '3', exbel: 'c', faedn: 'd3', totalAmnt: '3.00' },
     ];
     const outcome = summarize({ eMsgnro: '000', eMsgtxt: 'OK', tFact: rows });
     assert.equal(outcome.verdict, 'PASS');

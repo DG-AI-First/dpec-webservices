@@ -1,0 +1,1 @@
+<soap-env:Envelope xmlns:soap-env="http://schemas.xmlsoap.org/soap/envelope/"><soap-env:Header/><soap-env:Body><n0:ZWsSap002Response xmlns:n0="urn:sap-com:document:sap:soap:functions:mc-style"><EMsgnro>ZFICA017</EMsgnro><EMsgtxt>Instalación 40066098 diferente a recibida por parámetro 40066099</EMsgtxt><TFact/></n0:ZWsSap002Response></soap-env:Body></soap-env:Envelope>

@@ -3,21 +3,22 @@ import assert from 'node:assert/strict';
 import { buildEnvelope, escapeXml, assertWireName } from '../src/soap/envelope.js';
 import type { WireField } from '../src/soap/types.js';
 
-const NAMESPACE = 'urn:sap-com:document:sap:rfc:functions';
+const NAMESPACE = 'urn:sap-com:document:sap:soap:functions:mc-style';
 
-describe('buildEnvelope — exact-string match against live-captured wire evidence', () => {
+describe('buildEnvelope — exact-string match against the WSDL contract (live-verified HTTP 200)', () => {
   it('produces the ZWsSap002 envelope byte-for-byte as captured against QA', () => {
-    // Verbatim from evidence/spike-2026-08-27T01-38-39-308Z/facturas.request.xml —
-    // this envelope was accepted by SAP (fault came from unconfigured binding,
-    // not a parse/format rejection), so it is our known-good reference.
+    // Shape taken from the QA WSDL (test/fixtures/ws002.wsdl.xml): the body
+    // element is qualified in the mc-style namespace, and because the schema
+    // declares no elementFormDefault (= unqualified), its children are bare.
+    // Sending them prefixed produced HTTP 500 for months — see README.
     const expected = `<?xml version="1.0" encoding="UTF-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:sap-com:document:sap:rfc:functions">
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:sap-com:document:sap:soap:functions:mc-style">
   <soapenv:Header/>
   <soapenv:Body>
     <urn:ZWsSap002>
-      <urn:IAnlage>0010099044</urn:IAnlage>
-      <urn:ICantfact>10</urn:ICantfact>
-      <urn:IPartner>0010099046</urn:IPartner>
+      <IAnlage>0010099044</IAnlage>
+      <ICantfact>10</ICantfact>
+      <IPartner>0010099046</IPartner>
     </urn:ZWsSap002>
   </soapenv:Body>
 </soapenv:Envelope>`;
@@ -37,18 +38,22 @@ describe('buildEnvelope — exact-string match against live-captured wire eviden
   });
 
   it('produces the ZFicaDeudaIcUnif envelope byte-for-byte as captured against QA', () => {
-    // Verbatim from evidence/spike-2026-08-27T01-39-07-793Z/deuda.request.xml.
-    // Note empty fields render as open+close tags, never self-closed.
+    // Shape taken from the QA WSDL (test/fixtures/fica.wsdl.xml). Empty
+    // fields render as open+close tags, never self-closed. PoDocumentos and
+    // PoMensaje belong in the REQUEST too: mc-style puts the RFC's output
+    // tables in the input element's sequence without minOccurs="0".
     const expected = `<?xml version="1.0" encoding="UTF-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:sap-com:document:sap:rfc:functions">
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:sap-com:document:sap:soap:functions:mc-style">
   <soapenv:Header/>
   <soapenv:Body>
     <urn:ZFicaDeudaIcUnif>
-      <urn:PiCc></urn:PiCc>
-      <urn:PiFechaHasta></urn:PiFechaHasta>
-      <urn:PiI></urn:PiI>
-      <urn:PiIc>0010084434</urn:PiIc>
-      <urn:PiNumMax>10</urn:PiNumMax>
+      <PiCc></PiCc>
+      <PiFechaHasta></PiFechaHasta>
+      <PiI></PiI>
+      <PiIc>0010084434</PiIc>
+      <PiNumMax>10</PiNumMax>
+      <PoDocumentos></PoDocumentos>
+      <PoMensaje></PoMensaje>
     </urn:ZFicaDeudaIcUnif>
   </soapenv:Body>
 </soapenv:Envelope>`;
@@ -59,6 +64,8 @@ describe('buildEnvelope — exact-string match against live-captured wire eviden
       { name: 'PiI', value: '' },
       { name: 'PiIc', value: '0010084434' },
       { name: 'PiNumMax', value: '10' },
+      { name: 'PoDocumentos', value: '' },
+      { name: 'PoMensaje', value: '' },
     ];
 
     const actual = buildEnvelope(
@@ -80,7 +87,7 @@ describe('escapeXml', () => {
       { operationName: 'ZWsSap002', namespace: NAMESPACE },
       [{ name: 'IAnlage', value: 'Fulano & Cia' }],
     );
-    assert.ok(xml.includes('<urn:IAnlage>Fulano &amp; Cia</urn:IAnlage>'));
+    assert.ok(xml.includes('<IAnlage>Fulano &amp; Cia</IAnlage>'));
     assert.ok(!xml.includes('Fulano & Cia'));
   });
 });

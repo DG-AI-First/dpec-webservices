@@ -44,7 +44,11 @@ export interface ServiceOutcome {
 export interface SoapOperation<TInput, TOutput> {
   readonly serviceName: string; // 'z-ws-sap-002' — slug used in evidence filenames
   readonly operationName: string; // 'ZWsSap002' — SOAP body element name (wire)
-  readonly namespace: string; // 'urn:sap-com:document:sap:rfc:functions'
+  // 'urn:sap-com:document:sap:soap:functions:mc-style' — the namespace of the
+  // operation ELEMENT. Not 'urn:sap-com:document:sap:rfc:functions', which is
+  // only the schema of scalar TYPES (char10, curr13.2) and is never a body
+  // namespace. Getting these two backwards is an opaque HTTP 500.
+  readonly namespace: string;
   readonly endpointPath: string; // '/sap/bc/srt/rfc/sap/z_ws_sap_002/...'
   readonly soapAction: string; // '' by default — see live findings, non-factor
 
