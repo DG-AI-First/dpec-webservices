@@ -39,7 +39,6 @@ export class Secret {
 }
 
 export interface AppConfig {
-  readonly runId: string;
   readonly env: Environment;
   readonly scheme: Scheme;
   readonly host: string;
@@ -47,9 +46,7 @@ export interface AppConfig {
   readonly user: string | null;
   readonly password: Secret | null;
   readonly basicAuthCharset: BasicAuthCharset;
-  readonly dryRun: boolean;
   readonly timeoutMs: number;
-  readonly evidenceDir: string;
   readonly tls: TlsMode;
   readonly port: number;
   readonly serverDeadlineMs: number;
@@ -64,12 +61,6 @@ export class ConfigError extends Error {
     this.name = 'ConfigError';
     this.kind = kind;
   }
-}
-
-function makeRunId(): string {
-  // Windows prohíbe ':' en nombres de archivo; todo lo que usa runId
-  // depende de que este formato ya sea seguro.
-  return new Date().toISOString().replace(/[:.]/g, '-');
 }
 
 function trimmed(env: NodeJS.ProcessEnv, key: string): string | undefined {
@@ -110,14 +101,6 @@ function resolveSapClient(env: NodeJS.ProcessEnv): string {
   if (raw === undefined || raw === '') return '100';
   if (/^\d{3}$/.test(raw)) return raw;
   throw new ConfigError(`SAP_CLIENT must be exactly 3 digits (got ${JSON.stringify(env.SAP_CLIENT)}).`);
-}
-
-function resolveDryRun(env: NodeJS.ProcessEnv): boolean {
-  const raw = trimmed(env, 'DPEC_DRY_RUN');
-  if (raw === undefined || raw === '') return false;
-  if (raw === 'true') return true;
-  if (raw === 'false') return false;
-  throw new ConfigError(`DPEC_DRY_RUN must be "true" or "false" (got ${JSON.stringify(env.DPEC_DRY_RUN)}).`);
 }
 
 function resolveTimeoutMs(env: NodeJS.ProcessEnv): number {
@@ -199,20 +182,13 @@ function resolveTls(env: NodeJS.ProcessEnv, resolvedEnv: Environment): TlsMode {
   return { mode: 'default' };
 }
 
-function resolveCredentials(
-  env: NodeJS.ProcessEnv,
-  dryRun: boolean,
-): { user: string | null; password: Secret | null } {
+function resolveCredentials(env: NodeJS.ProcessEnv): { user: string; password: Secret } {
   const user = trimmed(env, 'SAP_USER');
   const password = env.SAP_PASSWORD; // nunca trimear password: el espacio puede ser intencional
 
-  if (dryRun) {
-    return { user: user ?? null, password: password ? new Secret(password) : null };
-  }
-
   if (!user || !password) {
     throw new ConfigError(
-      'SAP_USER / SAP_PASSWORD are required outside dry-run mode. Copy .env.example to .env and fill them in.',
+      'SAP_USER / SAP_PASSWORD are required. Copy .env.example to .env and fill them in.',
       'config-missing',
     );
   }
@@ -226,19 +202,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 
   const scheme = resolveScheme(env);
   const sapClient = resolveSapClient(env);
-  const dryRun = resolveDryRun(env);
   const timeoutMs = resolveTimeoutMs(env);
   const basicAuthCharset = resolveBasicAuthCharset(env);
   const tls = resolveTls(env, resolvedEnv);
-  const { user, password } = resolveCredentials(env, dryRun);
+  const { user, password } = resolveCredentials(env);
   const port = resolvePort(env);
   const serverDeadlineMs = resolveServerDeadlineMs(env, timeoutMs);
 
-  const evidenceDirRaw = trimmed(env, 'DPEC_EVIDENCE_DIR');
-  const evidenceDir = evidenceDirRaw === undefined || evidenceDirRaw === '' ? './evidence' : evidenceDirRaw;
-
   return Object.freeze({
-    runId: makeRunId(),
     env: resolvedEnv,
     scheme,
     host: HOSTS[resolvedEnv],
@@ -246,9 +217,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     user,
     password,
     basicAuthCharset,
-    dryRun,
     timeoutMs,
-    evidenceDir,
     tls,
     port,
     serverDeadlineMs,

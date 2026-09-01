@@ -114,15 +114,8 @@ describe('loadConfig — insecure TLS gate', () => {
 });
 
 describe('loadConfig — credential presence', () => {
-  it('throws ConfigError when credentials are missing in live mode', () => {
+  it('throws ConfigError when credentials are missing — unconditional, no dry-run bypass', () => {
     assert.throws(() => loadConfig({}), ConfigError);
-  });
-
-  it('does not require credentials in dry-run mode', () => {
-    const config = loadConfig({ DPEC_DRY_RUN: 'true' });
-    assert.equal(config.dryRun, true);
-    assert.equal(config.user, null);
-    assert.equal(config.password, null);
   });
 });
 
