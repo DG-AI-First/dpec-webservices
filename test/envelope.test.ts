@@ -116,3 +116,35 @@ describe('assertWireName — the .NET-proxy-artifact guard', () => {
     );
   });
 });
+
+describe('assertWireName — widened for ZZCS_INFO_IC_WS UPPER_SNAKE wire names', () => {
+  // ZZCS_INFO_IC_WS's WSDL (test/fixtures/zzcsInfoIcWs.wsdl.xml) declares
+  // IN_NUMERO, IN_PARTNER, OU_INFO_IC_WS, etc. — SAP's ABAP RFC parameter
+  // names verbatim, unlike the mc-style services which get PascalCase from
+  // the RFC-to-SOAP generator. Both are legitimate wire formats depending on
+  // which generator produced the WSDL; the guard must accept both while
+  // still rejecting the .NET-proxy artifacts and malformed underscore usage
+  // that indicate a transcription bug rather than a real naming convention.
+
+  it('still accepts PascalCase names (mc-style services)', () => {
+    assert.doesNotThrow(() => assertWireName('PiIc'));
+    assert.doesNotThrow(() => assertWireName('TFact'));
+  });
+
+  it('accepts UPPER_SNAKE names straight from the ZZCS WSDL', () => {
+    for (const name of ['IN_NUMERO', 'IDNUMBER_DNI', 'OU_INFO_IC_WS', 'HOUSE_NUM1_IC', 'POST_CODE1_IN']) {
+      assert.doesNotThrow(() => assertWireName(name), `expected "${name}" to be accepted`);
+    }
+  });
+
+  it('still rejects the "Field" suffix and lowercase-initial names', () => {
+    assert.throws(() => assertWireName('piIcField'), /\.NET proxy artifact/);
+    assert.throws(() => assertWireName('tFact'), /PascalCase/);
+  });
+
+  it('rejects malformed underscore usage: leading, trailing, doubled', () => {
+    for (const name of ['_LEADING', 'TRAILING_', 'DOUBLE__UNDERSCORE']) {
+      assert.throws(() => assertWireName(name), /PascalCase/, `expected "${name}" to be rejected`);
+    }
+  });
+});

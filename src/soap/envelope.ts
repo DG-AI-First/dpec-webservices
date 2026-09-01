@@ -4,7 +4,22 @@
 
 import type { SoapOperation, WireField } from './types.js';
 
-const WIRE_NAME = /^[A-Z][A-Za-z0-9]*$/;
+// Two legitimate wire-naming conventions coexist across the services this
+// client speaks to, and both were verified against a real WSDL, not
+// reconstructed from a doc:
+//   - PascalCase (`PiIc`, `TFact`)     — the mc-style services' RFC-to-SOAP
+//     generator title-cases the ABAP parameter name.
+//   - UPPER_SNAKE (`IN_NUMERO`, `OU_INFO_IC_WS`) — ZZCS_INFO_IC_WS's WSDL
+//     (test/fixtures/zzcsInfoIcWs.wsdl.xml) emits the ABAP RFC parameter
+//     name verbatim, underscores included. The original guard only knew the
+//     first convention and threw on every field of the third service.
+// Both alternatives independently forbid what makes a name a bug rather than
+// a dialect: a lowercase start, and (in the UPPER_SNAKE case) a leading,
+// trailing, or doubled underscore — those are transcription mistakes, not a
+// naming convention SAP has ever emitted.
+const PASCAL_CASE = /^[A-Z][A-Za-z0-9]*$/;
+const UPPER_SNAKE_CASE = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
+const WIRE_NAME = new RegExp(`(?:${PASCAL_CASE.source})|(?:${UPPER_SNAKE_CASE.source})`);
 
 /**
  * Enforces the wire-naming rule: any element ending in "Field", or starting
@@ -21,7 +36,11 @@ export function assertWireName(name: string): void {
     );
   }
   if (!WIRE_NAME.test(name)) {
-    throw new Error(`Invalid SOAP element "${name}": wire names are PascalCase.`);
+    throw new Error(
+      `Invalid SOAP element "${name}": wire names are PascalCase (e.g. "PiIc") or ` +
+        `UPPER_SNAKE_CASE (e.g. "IN_NUMERO") — never lowercase-initial, and never ` +
+        'with a leading, trailing, or doubled underscore.',
+    );
   }
 }
 
