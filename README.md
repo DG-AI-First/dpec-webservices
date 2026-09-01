@@ -138,10 +138,12 @@ datos reales el mismo día. Los WSDL están promovidos a `test/fixtures/`.
 11. **Windows: nunca usar `process.exit()` acá.** Salir así mientras undici
     todavía tiene sockets cerrándose aborta el proceso con
     `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` y devuelve **127**
-    en lugar del código calculado — destruye el contrato de exit codes, que es
-    todo el valor de esta herramienta. `closeTransport()` libera los sockets e
-    `index.ts` setea `process.exitCode`. Cubierto por
-    `test/exit-contract.test.ts`.
+    en lugar de terminar limpio. `closeTransport()` libera los sockets;
+    `src/server.ts` la llama en el shutdown gradual (SIGTERM/SIGINT) antes de
+    dejar terminar al proceso solo. El release de sockets está cubierto por
+    `test/transport.test.ts`; la entrega real de señales OS no tiene test
+    automatizado (en este sandbox Windows, `kill -INT`/`-TERM` vía MSYS bash no
+    llegan de forma confiable al handler de Node — verificado a mano).
 
 ### Corrección al diagnóstico anterior
 

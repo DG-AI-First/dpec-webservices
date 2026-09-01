@@ -61,7 +61,7 @@ usar el de otro servicio da un HTTP 500 opaco.
 No hay override global: `AppConfig.soapAction` / `DPEC_SOAP_ACTION` se
 sacaron de config.ts porque un único valor de config no puede ser correcto
 para los tres servicios a la vez. La fuente de verdad es siempre
-`SoapOperation.soapAction`, por operación (ver src/index.ts).
+`SoapOperation.soapAction`, por operación (ver src/soap/types.ts).
 
 ## Privacidad de los fixtures
 
