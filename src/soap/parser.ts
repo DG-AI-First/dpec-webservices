@@ -1,16 +1,14 @@
-// Response parsing. See design §3 for the reasoning behind every parser flag.
-//
-// The single highest-value line here is `parseTagValue: false` — SAP document
-// numbers (`exbel`) carry leading zeros and money fields (`totalAmnt`) are
-// decimal strings; auto-parsing either would silently corrupt the evidence.
+// Parseo de la respuesta SOAP. parseTagValue: false es la clave: exbel y
+// totalAmnt deben quedar string (ceros a la izquierda, decimales); parsear
+// automático los corrompería.
 
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
 import type { XmlNode } from './types.js';
 import { ParseError } from '../errors.js';
 
-// Wire names, PascalCase, straight from the WSDLs in test/fixtures/.
-// `removeNSPrefix` strips prefixes; it does NOT change case. A camelCase
-// entry here silently matches nothing and every table reads as empty.
+// Nombres del cable, PascalCase, tomados de los WSDL en test/fixtures/.
+// removeNSPrefix no cambia mayúsculas: una entrada en camelCase no matchea
+// nada y la tabla completa se lee vacía sin error visible.
 const LIST_ELEMENTS = new Set(['PoDocumentos', 'PoMensaje', 'TFact', 'item']);
 
 export const parser = new XMLParser({
@@ -30,7 +28,7 @@ function isEmptySentinel(value: unknown): boolean {
   );
 }
 
-/** Unwraps the `{ item: [...] }` RFC-table-serialization variant, otherwise passthrough. */
+/** Desenvuelve la variante `{ item: [...] }` de tabla RFC; si no aplica, pasa igual. */
 function unwrapItemContainer(value: unknown): unknown {
   if (value !== null && typeof value === 'object' && !Array.isArray(value) && 'item' in (value as Record<string, unknown>)) {
     return (value as Record<string, unknown>).item;
@@ -39,16 +37,10 @@ function unwrapItemContainer(value: unknown): unknown {
 }
 
 /**
- * Normalizes any SAP RFC table value into a real array, regardless of shape.
- *
- * This is defense #2 against the array-coercion trap (design §3(C)) — and it
- * has to do more than the design's original one-liner suggested, because of
- * an empirically-discovered gotcha: when an element name is in the parser's
- * `isArray` allowlist, fast-xml-parser coerces even a SELF-CLOSED element
- * into a ONE-ELEMENT array containing an empty-string sentinel (`['']`), not
- * an empty array. So this function must flatten sentinels *inside* arrays
- * too, not just handle a bare scalar sentinel — see test/parse.test.ts for
- * the full case table (undefined/''/{}/[''] all -> [], item-wrapped -> rows).
+ * Normaliza cualquier valor de tabla RFC a un array real. fast-xml-parser
+ * coerciona un elemento auto-cerrado en el allowlist isArray a `['']` en vez
+ * de `[]`, así que hay que aplanar sentinels también dentro de arrays.
+ * Detalle: docs/hallazgos-tecnicos.md#la-trampa-de-coercion-de-arrays-array-coercion-trap
  */
 export function toArray<T>(value: unknown): T[] {
   if (isEmptySentinel(value)) return [];
@@ -75,12 +67,9 @@ export function toArray<T>(value: unknown): T[] {
 }
 
 /**
- * Parses raw response bytes into an XmlNode. Throws ParseError for anything
- * that isn't well-formed XML at all (empty body, plain text, mismatched
- * tags). Note: well-formed XML that isn't a valid SOAP envelope (an HTML
- * error page with matched tags, or SAP's proprietary <error> shape) passes
- * THIS check — that's caught one layer up, by findFault/unwrapBody failing
- * to locate an Envelope/Body structure.
+ * Parsea bytes crudos a XmlNode. Lanza ParseError sólo si no es XML bien
+ * formado. XML válido pero no-SOAP (página de error HTML, `<error>` propio
+ * de SAP) pasa este chequeo; lo detectan findFault/unwrapBody después.
  */
 export function parseXml(raw: string): XmlNode {
   const validation = XMLValidator.validate(raw);
@@ -97,11 +86,9 @@ export function parseXml(raw: string): XmlNode {
 }
 
 /**
- * Coerces a parsed field value to a plain string. Exported for reuse by
- * services/*.ts parseResult mappers (Phase 4) — a field with attributes
- * (rare, but the same shape as a Fault's `faultstring xml:lang="es"`) parses
- * to `{ '#text': ..., '@_...': ... }` instead of a bare string, and every
- * service field must come out as a plain string per design §10.
+ * Convierte un valor de campo parseado a string plano. Un campo con
+ * atributos (ej. `faultstring xml:lang="es"`) parsea como
+ * `{ '#text': ..., '@_...': ... }` en vez de string simple.
  */
 export function extractText(value: unknown): string {
   if (typeof value === 'string') return value;
@@ -116,10 +103,7 @@ export interface SoapFault {
   readonly faultString: string;
 }
 
-/**
- * Looks for Envelope.Body.Fault (post-namespace-strip). Returns null — not
- * an error — when there is no fault; the caller decides what that means.
- */
+/** Busca Envelope.Body.Fault (después de sacar el namespace). null si no hay fault. */
 export function findFault(node: XmlNode): SoapFault | null {
   const envelope = node.Envelope as XmlNode | undefined;
   const body = envelope && typeof envelope === 'object' ? (envelope.Body as XmlNode | undefined) : undefined;
@@ -138,10 +122,9 @@ export interface UnwrapResult {
 }
 
 /**
- * SAP convention is `${operationName}Response`. If absent, falls back to the
- * single non-Fault key under Body and records the mismatch for meta.json —
- * an unverified naming convention should degrade into a recorded
- * observation, not a crash (design §3).
+ * SAP nombra la respuesta `${operationName}Response`. Si no está, cae a la
+ * única clave no-Fault bajo Body y registra el mismatch en meta.json en vez
+ * de fallar.
  */
 export function unwrapBody(node: XmlNode, operationName: string): UnwrapResult {
   const envelope = node.Envelope as XmlNode | undefined;

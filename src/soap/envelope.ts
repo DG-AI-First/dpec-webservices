@@ -1,32 +1,19 @@
-// SOAP 1.1 envelope construction. Template string, not a builder library —
-// the SoapUI capture (and now the live-captured wire evidence) gives the
-// envelope verbatim; this is transcription, not synthesis. See design §2.
+// Construcción del envelope SOAP 1.1. Template string, no builder library:
+// transcripción directa de lo verificado contra QA, no síntesis.
 
 import type { SoapOperation, WireField } from './types.js';
 
-// Two legitimate wire-naming conventions coexist across the services this
-// client speaks to, and both were verified against a real WSDL, not
-// reconstructed from a doc:
-//   - PascalCase (`PiIc`, `TFact`)     — the mc-style services' RFC-to-SOAP
-//     generator title-cases the ABAP parameter name.
-//   - UPPER_SNAKE (`IN_NUMERO`, `OU_INFO_IC_WS`) — ZZCS_INFO_IC_WS's WSDL
-//     (test/fixtures/zzcsInfoIcWs.wsdl.xml) emits the ABAP RFC parameter
-//     name verbatim, underscores included. The original guard only knew the
-//     first convention and threw on every field of the third service.
-// Both alternatives independently forbid what makes a name a bug rather than
-// a dialect: a lowercase start, and (in the UPPER_SNAKE case) a leading,
-// trailing, or doubled underscore — those are transcription mistakes, not a
-// naming convention SAP has ever emitted.
+// Dos dialectos de nombre de campo coexisten en los WSDL reales: PascalCase
+// (mc-style) y UPPER_SNAKE (ZZCS_INFO_IC_WS). Ambos verificados contra WSDL
+// real. Detalle: docs/hallazgos-tecnicos.md#convencion-de-nombres-de-campo-en-el-cable
 const PASCAL_CASE = /^[A-Z][A-Za-z0-9]*$/;
 const UPPER_SNAKE_CASE = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
 const WIRE_NAME = new RegExp(`(?:${PASCAL_CASE.source})|(?:${UPPER_SNAKE_CASE.source})`);
 
 /**
- * Enforces the wire-naming rule: any element ending in "Field", or starting
- * with a lowercase letter, is a bug. "Field" is a .NET proxy backing-field
- * artifact (svcutil/xsd.exe) that never belongs on the wire — sending it
- * risks a SAP fault, or worse, an ignored parameter and a plausible-looking
- * empty result. See design §2.
+ * El sufijo "Field" es un artefacto del proxy .NET (svcutil/xsd.exe) y nunca
+ * va al cable: enviarlo arriesga un fault SAP o, peor, un parámetro ignorado
+ * con un resultado vacío de apariencia normal.
  */
 export function assertWireName(name: string): void {
   if (name.endsWith('Field')) {
@@ -54,15 +41,10 @@ export function escapeXml(value: string): string {
 }
 
 /**
- * All declared fields are always emitted, empty when unset.
- *
- * Children are UNQUALIFIED — no `urn:` prefix — and that is not a style
- * choice. Neither service's WSDL declares `elementFormDefault`, so XML Schema
- * defaults it to "unqualified": only the operation element itself lives in
- * the mc-style namespace, its children live in no namespace at all. Prefixing
- * them puts every parameter in a namespace SAP is not looking in, and SAP
- * answers HTTP 500 with a generic "Error en el tratamiento de servicio web"
- * that names nothing. Verified live against QA on 2026-08-28.
+ * Los hijos del elemento de operación van SIN prefijo de namespace. Ningún
+ * WSDL declara elementFormDefault, así que por defecto es unqualified.
+ * Prefijarlos = HTTP 500 "Error en el tratamiento de servicio web".
+ * Verificado 2026-08-28.
  */
 export function serializeFields(fields: readonly WireField[]): string {
   return fields

@@ -1,8 +1,6 @@
-// The fetch call site — deliberately NOT unit-tested (design §7: asserting
-// "fetch was called with the right URL" requires mocking global fetch, which
-// tests the mock). Verified via dry-run (skips this entirely) and the live
-// probe. Must stay domain-free: no tFact, no poDocumentos, nothing that
-// belongs to services/ — see design §1 layer map.
+// Punto de llamada a fetch. Deliberadamente sin test unitario: mockear fetch
+// global testearía el mock, no el comportamiento real. Verificado por
+// dry-run y por la sonda en vivo. No debe conocer nada de services/.
 
 import { Agent, getGlobalDispatcher } from 'undici';
 import { readFileSync } from 'node:fs';
@@ -26,16 +24,14 @@ export interface SoapCallResult {
 }
 
 /**
- * TLS ladder, rungs 2-3 (design §8). Rung 1 (default trust store) needs no
- * dispatcher at all — returning undefined lets fetch use its normal path.
- * Deliberately scoped via an undici Agent rather than
- * NODE_TLS_REJECT_UNAUTHORIZED=0, which would be process-global and disable
- * verification for every connection the process makes.
+ * Escalera de TLS, peldaños 2-3. El peldaño 1 (trust store default) no
+ * necesita dispatcher. Usa un Agent de undici en vez de
+ * NODE_TLS_REJECT_UNAUTHORIZED=0, que sería global a todo el proceso.
  */
 /**
- * Every Agent we hand to fetch, so closeTransport() can release them. Without
- * this an Agent per call would leak, and its half-closed sockets are what make
- * a subsequent process.exit() abort the process on Windows.
+ * Todo Agent entregado a fetch, para que closeTransport() los libere. Sin
+ * esto, cada Agent sin cerrar deja sockets que hacen abortar process.exit()
+ * en Windows.
  */
 const openAgents = new Set<Agent>();
 
@@ -54,17 +50,10 @@ function buildDispatcher(tls: TlsMode): Agent | undefined {
 }
 
 /**
- * Releases every socket the probe opened, so the process can end on its own
- * instead of being torn down mid-flight.
- *
- * This is not tidiness — it is the exit-code contract. Observed on win32:
- * process.exit() with undici sockets still closing aborts with
- * `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` and returns 127,
- * erasing the 0/2/3/4 answer this tool exists to produce. Callers must await
- * this and then set process.exitCode, never call process.exit().
- *
- * Errors are swallowed deliberately: a dispatcher that fails to close is not a
- * reason to change the verdict we are about to report.
+ * Libera los sockets abiertos por la sonda antes de terminar el proceso.
+ * win32: process.exit() con sockets undici abiertos aborta y devuelve 127,
+ * borrando el exit code real. Hay que await esto y recién después setear
+ * process.exitCode. Errores acá se ignoran a propósito: no cambian el veredicto.
  */
 export async function closeTransport(): Promise<void> {
   const agents = [...openAgents];
@@ -76,15 +65,10 @@ export async function closeTransport(): Promise<void> {
 }
 
 /**
- * Sends one SOAP request and returns the raw result whatever the HTTP
- * status turned out to be — the mandatory "read body as text always, write
- * evidence before parsing, check fault before status" ordering (design §3)
- * is the CALLER's responsibility (index.ts), not this function's: transport
- * must not know about evidence writing or fault detection, only bytes.
- *
- * Throws a classified TransportError only when fetch itself fails to
- * produce a response at all (network/DNS/TLS/timeout) — never for a non-2xx
- * status, since a 401 or a SOAP-fault-bearing 500 is a real, readable answer.
+ * Envía la request SOAP y devuelve el resultado crudo sin importar el status
+ * HTTP. Escribir evidencia antes de parsear y chequear fault antes que
+ * status es responsabilidad del caller (index.ts), no de esta función.
+ * Sólo lanza TransportError si fetch no produce respuesta (red/DNS/TLS/timeout).
  */
 export async function callSoap(options: SoapCallOptions): Promise<SoapCallResult> {
   const { url, xml, soapAction, auth, timeoutMs, tls } = options;
